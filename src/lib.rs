@@ -2,6 +2,6 @@ mod get;
 mod post;
 mod structs;
 
-pub use get::get_study_status;
+pub use get::{get_study_status, wait_for_done};
 pub use post::post;
-pub use structs::{Env, GetStatusResponse};
+pub use structs::{Env, MilvueParams, StatusResponse};

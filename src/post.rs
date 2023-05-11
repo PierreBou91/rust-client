@@ -5,9 +5,9 @@ use reqwest::{header, multipart, Client};
 use crate::Env;
 
 pub async fn post(
-    env: Env,
-    key: String,
-    dicom_list: Vec<FileDicomObject<InMemDicomObject>>,
+    env: &Env,
+    key: &str,
+    dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<reqwest::Response, reqwest::Error> {
     let milvue_api_url = match env {
         Env::Dev => "redacted/v3/studies",
@@ -17,7 +17,7 @@ pub async fn post(
 
     let mut headers = header::HeaderMap::new();
 
-    let mut api_header = header::HeaderValue::from_str(&key).unwrap();
+    let mut api_header = header::HeaderValue::from_str(key).unwrap();
     api_header.set_sensitive(true);
     headers.insert("x-goog-meta-owner", api_header);
 
@@ -49,10 +49,10 @@ pub async fn post(
     Ok(response)
 }
 
-fn build_form(files: Vec<FileDicomObject<InMemDicomObject>>) -> multipart::Form {
+fn build_form(files: &[FileDicomObject<InMemDicomObject>]) -> multipart::Form {
     let mut form = multipart::Form::new();
 
-    for (i, dicom_file) in files.into_iter().enumerate() {
+    for (i, dicom_file) in files.iter().enumerate() {
         // let sop_instance = dicom_file
         //     .element_by_name("SOPInstanceUID")
         //     .unwrap()
