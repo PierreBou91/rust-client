@@ -10,7 +10,7 @@ pub async fn post(
     dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<reqwest::Response, reqwest::Error> {
     let milvue_api_url = match env {
-        Env::Dev => "redacted/v3/studies",
+        Env::Dev => "redacted/v3/studies", // TODO: change this to the correct URL
         Env::Staging => "redacted/v3/studies",
         Env::Prod => "redacted/v3/studies",
     };
