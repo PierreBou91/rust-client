@@ -47,6 +47,13 @@ pub async fn main() {
         Ok(_) => println!("Done!"),
         Err(e) => panic!("Error: {}", e),
     }
+    let res = milvue_rs::get::get(
+        &env,
+        &key,
+        study_instance_uid.to_str().unwrap().as_ref(),
+        &milvue_rs::MilvueParams::default(),
+    )
+    .await;
 
-    print!("We're done!")
+    println!("Response {:#?}", res);
 }

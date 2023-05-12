@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{env, fmt::Display};
 
 use serde::Deserialize;
 
@@ -6,6 +6,20 @@ pub enum Env {
     Dev,
     Staging,
     Prod,
+}
+
+impl Env {
+    pub fn get_default() -> String {
+        env::var("MILVUE_API_URL").unwrap()
+    }
+
+    pub fn get_specific(env: &Env) -> String {
+        match env {
+            Env::Dev => env::var("MILVUE_API_URL_DEV").unwrap(),
+            Env::Staging => env::var("MILVUE_API_URL_STAGING").unwrap(),
+            Env::Prod => env::var("MILVUE_API_URL_PROD").unwrap(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]

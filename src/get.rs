@@ -8,11 +8,7 @@ pub async fn get(
     study_id: &str,
     milvue_params: &MilvueParams,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = match env {
-        Env::Dev => "redacted/v3/studies",
-        Env::Staging => "redacted/v3/studies",
-        Env::Prod => "redacted/v3/studies",
-    };
+    let milvue_api_url = Env::get_specific(env);
 
     let mut headers = header::HeaderMap::new();
 
@@ -45,11 +41,7 @@ pub async fn get_study_status(
     key: &str,
     study_id: &str,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = match env {
-        Env::Dev => "redacted/v3/studies",
-        Env::Staging => "redacted/v3/studies",
-        Env::Prod => "redacted/v3/studies",
-    };
+    let milvue_api_url = Env::get_specific(env);
 
     let mut headers = header::HeaderMap::new();
 
