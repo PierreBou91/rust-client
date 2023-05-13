@@ -9,7 +9,7 @@ pub async fn post(
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = Env::get_specific(env);
+    let milvue_api_url = format!("{}/v3/studies", Env::get_specific_url(env));
     let mut headers = header::HeaderMap::new();
 
     let mut api_header = header::HeaderValue::from_str(key).unwrap();

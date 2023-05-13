@@ -1,4 +1,9 @@
+use dicom_object::{
+    file::ReadPreamble, from_reader, FileDicomObject, InMemDicomObject, OpenFileOptions,
+};
+use multer::Multipart;
 use reqwest::{header, Client};
+use std::io::{Cursor, Read};
 
 use crate::{Env, MilvueParams, StatusResponse};
 
@@ -7,8 +12,8 @@ pub async fn get(
     key: &str,
     study_id: &str,
     milvue_params: &MilvueParams,
-) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = Env::get_specific(env);
+) -> Result<Vec<FileDicomObject<InMemDicomObject>>, Box<dyn std::error::Error>> {
+    let milvue_api_url = format!("{}/v3/studies/{}", Env::get_specific_url(env), study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -20,20 +25,72 @@ pub async fn get(
         header::HeaderValue::from_str("application/json").unwrap(),
     );
 
-    let client = Client::builder()
-        .default_headers(headers)
-        // .https_only(true)
-        .build()
-        .unwrap();
+    let client = Client::builder().default_headers(headers).build().unwrap();
 
     let response = client
-        .get(format!("{}/{}", milvue_api_url, study_id))
+        .get(milvue_api_url)
         .query(milvue_params.to_query_param().as_slice())
         .send()
-        .await
+        .await?;
+
+    println!("Response {:#?}", response.headers());
+
+    let boundary = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|header_value| header_value.to_str().ok())
+        .and_then(|content_type| {
+            let parts: Vec<_> = content_type.split("boundary=").collect();
+            if parts.len() == 2 {
+                Some(parts[1].to_string())
+            } else {
+                None
+            }
+        })
         .unwrap();
 
-    Ok(response)
+    println!("Boundary: {}", boundary);
+    let body = response.bytes().await?;
+    let cursor = Cursor::new(body);
+    let mut multipart = Multipart::with_reader(cursor, boundary);
+    println!("Multipart: {:#?}", multipart);
+    let mut dicoms = Vec::new();
+
+    while let Some(field) = multipart.next_field().await? {
+        println!("Field: {:#?}", field);
+        let file_bytes = field.bytes().await?;
+        println!("File bytes length: {:#?}", file_bytes.len());
+        // println!("File bytes: {:#?}", file_bytes);
+
+        // Print the 10 bytes after an offset of 128 bytes for each field
+        if file_bytes.len() > 128 {
+            let offset = 128;
+            let end = std::cmp::min(file_bytes.len(), offset + 8);
+            let slice = &file_bytes[offset..end];
+            // println!("10 bytes after an offset of 128: {:?}", slice);
+            println!(
+                "10 bytes after an offset of 128: {}",
+                String::from_utf8_lossy(slice)
+            );
+        } else {
+            println!("File bytes length is less than or equal to 128.");
+        }
+        match OpenFileOptions::new()
+            .read_preamble(ReadPreamble::Always)
+            .from_reader(Cursor::new(file_bytes.clone()))
+        {
+            Ok(dicom_file) => {
+                dicoms.push(dicom_file);
+            }
+            Err(err) => {
+                eprintln!("Error reading DICOM file: {:?}", err);
+            }
+        }
+
+        // dicoms.push(dicom_file);
+    }
+
+    Ok(dicoms)
 }
 
 pub async fn get_study_status(
@@ -41,7 +98,7 @@ pub async fn get_study_status(
     key: &str,
     study_id: &str,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = Env::get_specific(env);
+    let milvue_api_url = format!("{}/v3/studies/{}", Env::get_specific_url(env), study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -60,7 +117,7 @@ pub async fn get_study_status(
         .unwrap();
 
     let response = client
-        .get(format!("{}/{}/status", milvue_api_url, study_id))
+        .get(format!("{}/status", milvue_api_url))
         .send()
         .await
         .unwrap();
@@ -72,9 +129,9 @@ pub async fn wait_for_done(env: &Env, key: &str, study_id: &str) -> Result<(), r
     let mut status_response = get_study_status(env, key, study_id).await.unwrap();
 
     let mut status_body: StatusResponse = status_response.json().await.unwrap();
-    print!("Status: {}", status_body.status);
 
     while status_body.status != "done" {
+        println!("Status: {}", status_body.status);
         status_response = get_study_status(env, key, study_id).await.unwrap();
         status_body = status_response.json().await.unwrap();
         println!("Waiting for done...");

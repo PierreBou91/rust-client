@@ -1,5 +1,6 @@
 use std::{env, fmt::Display};
 
+use dicom_object::{FileDicomObject, InMemDicomObject};
 use serde::Deserialize;
 
 pub enum Env {
@@ -9,11 +10,11 @@ pub enum Env {
 }
 
 impl Env {
-    pub fn get_default() -> String {
+    pub fn get_default_url() -> String {
         env::var("MILVUE_API_URL").unwrap()
     }
 
-    pub fn get_specific(env: &Env) -> String {
+    pub fn get_specific_url(env: &Env) -> String {
         match env {
             Env::Dev => env::var("MILVUE_API_URL_DEV").unwrap(),
             Env::Staging => env::var("MILVUE_API_URL_STAGING").unwrap(),
@@ -228,4 +229,27 @@ impl Display for StaticReportFormat {
             StaticReportFormat::None => write!(f, "none"),
         }
     }
+}
+
+pub fn check_study_uids(
+    dicom_list: &[FileDicomObject<InMemDicomObject>],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let study_uid = dicom_list[0]
+        .element_by_name("StudyInstanceUID")?
+        .to_str()?
+        .to_string();
+    for dicom in dicom_list {
+        let current_study_uid = dicom
+            .element_by_name("StudyInstanceUID")?
+            .to_str()?
+            .to_string();
+        if study_uid != current_study_uid {
+            return Err(format!(
+                "StudyInstanceUID mismatch: expected {}, got {}", // TODO: Improve error message
+                study_uid, current_study_uid
+            )
+            .into());
+        }
+    }
+    Ok(study_uid)
 }
