@@ -3,7 +3,6 @@ use std::env;
 
 #[tokio::main]
 pub async fn main() {
-    let env = milvue_rs::Env::Staging;
     let key = env::var("MILVUE_API_KEY").unwrap();
     let dicom_list = vec![
         // open_file("DX000000.dcm").unwrap(),
@@ -17,7 +16,7 @@ pub async fn main() {
     let study_instance_uid = milvue_rs::check_study_uids(&dicom_list).unwrap();
     println!("Study Instance UID: {}", study_instance_uid);
 
-    let post_response = match milvue_rs::post(&env, &key, &dicom_list).await {
+    let post_response = match milvue_rs::post(&key, &dicom_list).await {
         Ok(res) => res,
         Err(e) => panic!("Error: {}", e),
     };
@@ -27,12 +26,11 @@ pub async fn main() {
         status => println!("Expected status 200 got: {:#?}", status),
     }
 
-    match milvue_rs::wait_for_done(&env, &key, &study_instance_uid).await {
+    match milvue_rs::wait_for_done(&key, &study_instance_uid).await {
         Ok(_) => println!("Done!"),
         Err(e) => panic!("Error: {}", e),
     }
     let res = milvue_rs::get(
-        &env,
         &key,
         &study_instance_uid,
         &milvue_rs::MilvueParams::default(),

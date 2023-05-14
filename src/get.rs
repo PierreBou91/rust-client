@@ -1,19 +1,25 @@
-use dicom_object::{
-    file::ReadPreamble, from_reader, FileDicomObject, InMemDicomObject, OpenFileOptions,
-};
+use dicom_object::{file::ReadPreamble, FileDicomObject, InMemDicomObject, OpenFileOptions};
 use multer::Multipart;
 use reqwest::{header, Client};
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
-use crate::{Env, MilvueParams, StatusResponse};
+use crate::{MilvueParams, MilvueUrl, StatusResponse};
 
 pub async fn get(
-    env: &Env,
     key: &str,
     study_id: &str,
     milvue_params: &MilvueParams,
 ) -> Result<Vec<FileDicomObject<InMemDicomObject>>, Box<dyn std::error::Error>> {
-    let milvue_api_url = format!("{}/v3/studies/{}", Env::get_specific_url(env), study_id);
+    get_with_url(&MilvueUrl::default(), key, study_id, milvue_params).await
+}
+
+pub async fn get_with_url(
+    env: &MilvueUrl,
+    key: &str,
+    study_id: &str,
+    milvue_params: &MilvueParams,
+) -> Result<Vec<FileDicomObject<InMemDicomObject>>, Box<dyn std::error::Error>> {
+    let milvue_api_url = format!("{}/v3/studies/{}", MilvueUrl::get_url(env)?, study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -94,11 +100,18 @@ pub async fn get(
 }
 
 pub async fn get_study_status(
-    env: &Env,
     key: &str,
     study_id: &str,
-) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = format!("{}/v3/studies/{}", Env::get_specific_url(env), study_id);
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    get_study_status_with_url(&MilvueUrl::default(), key, study_id).await
+}
+
+pub async fn get_study_status_with_url(
+    env: &MilvueUrl,
+    key: &str,
+    study_id: &str,
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    let milvue_api_url = format!("{}/v3/studies/{}", MilvueUrl::get_url(env)?, study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -125,14 +138,22 @@ pub async fn get_study_status(
     Ok(response)
 }
 
-pub async fn wait_for_done(env: &Env, key: &str, study_id: &str) -> Result<(), reqwest::Error> {
-    let mut status_response = get_study_status(env, key, study_id).await.unwrap();
+pub async fn wait_for_done(key: &str, study_id: &str) -> Result<(), reqwest::Error> {
+    wait_for_done_with_url(&MilvueUrl::default(), key, study_id).await
+}
+
+pub async fn wait_for_done_with_url(
+    env: &MilvueUrl,
+    key: &str,
+    study_id: &str,
+) -> Result<(), reqwest::Error> {
+    let mut status_response = get_study_status_with_url(env, key, study_id).await.unwrap();
 
     let mut status_body: StatusResponse = status_response.json().await.unwrap();
 
     while status_body.status != "done" {
         println!("Status: {}", status_body.status);
-        status_response = get_study_status(env, key, study_id).await.unwrap();
+        status_response = get_study_status_with_url(env, key, study_id).await.unwrap();
         status_body = status_response.json().await.unwrap();
         println!("Waiting for done...");
         std::thread::sleep(std::time::Duration::from_secs(3));

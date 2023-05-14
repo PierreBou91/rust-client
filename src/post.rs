@@ -2,14 +2,21 @@ use dicom::object::InMemDicomObject;
 use dicom_object::FileDicomObject;
 use reqwest::{header, multipart, Client};
 
-use crate::Env;
+use crate::MilvueUrl;
 
 pub async fn post(
-    env: &Env,
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
-) -> Result<reqwest::Response, reqwest::Error> {
-    let milvue_api_url = format!("{}/v3/studies", Env::get_specific_url(env));
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    post_with_url(&MilvueUrl::default(), key, dicom_list).await
+}
+
+pub async fn post_with_url(
+    env: &MilvueUrl,
+    key: &str,
+    dicom_list: &[FileDicomObject<InMemDicomObject>],
+) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+    let milvue_api_url = format!("{}/v3/studies", MilvueUrl::get_url(env)?);
     let mut headers = header::HeaderMap::new();
 
     let mut api_header = header::HeaderValue::from_str(key).unwrap();

@@ -3,22 +3,22 @@ use std::{env, fmt::Display};
 use dicom_object::{FileDicomObject, InMemDicomObject};
 use serde::Deserialize;
 
-pub enum Env {
+#[derive(Default)]
+pub enum MilvueUrl {
     Dev,
     Staging,
     Prod,
+    #[default]
+    DefaultUrl,
 }
 
-impl Env {
-    pub fn get_default_url() -> String {
-        env::var("MILVUE_API_URL").unwrap()
-    }
-
-    pub fn get_specific_url(env: &Env) -> String {
-        match env {
-            Env::Dev => env::var("MILVUE_API_URL_DEV").unwrap(),
-            Env::Staging => env::var("MILVUE_API_URL_STAGING").unwrap(),
-            Env::Prod => env::var("MILVUE_API_URL_PROD").unwrap(),
+impl MilvueUrl {
+    pub fn get_url(&self) -> Result<String, std::env::VarError> {
+        match self {
+            MilvueUrl::Dev => env::var("MILVUE_API_URL_DEV"),
+            MilvueUrl::Staging => env::var("MILVUE_API_URL_STAGING"),
+            MilvueUrl::Prod => env::var("MILVUE_API_URL_PROD"),
+            MilvueUrl::DefaultUrl => env::var("MILVUE_API_URL"),
         }
     }
 }
