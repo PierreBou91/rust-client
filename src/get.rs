@@ -53,7 +53,7 @@ pub async fn get_with_url(
                 None
             }
         })
-        .unwrap();
+        .unwrap(); // add support for the none case
 
     println!("Boundary: {}", boundary);
     let body = response.bytes().await?;
