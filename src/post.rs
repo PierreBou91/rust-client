@@ -4,6 +4,16 @@ use reqwest::{header, multipart, Client};
 
 use crate::MilvueUrl;
 
+/// Sends a POST request to upload DICOM files in the default environment.
+///
+/// # Arguments
+///
+/// * `key` - A string slice that holds the API key.
+/// * `dicom_list` - A list of DICOM files to be uploaded.
+///
+/// # Returns
+///
+/// * A Result wrapping a reqwest::Response indicating the HTTP response or an error.
 pub async fn post(
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
@@ -11,6 +21,17 @@ pub async fn post(
     post_with_url(&MilvueUrl::default(), key, dicom_list).await
 }
 
+/// Sends a POST request to upload DICOM files to a specific URL.
+///
+/// # Arguments
+///
+/// * `env` - A reference to MilvueUrl that specifies the environment.
+/// * `key` - A string slice that holds the API key.
+/// * `dicom_list` - A list of DICOM files to be uploaded.
+///
+/// # Returns
+///
+/// * A Result wrapping a reqwest::Response indicating the HTTP response or an error.
 pub async fn post_with_url(
     env: &MilvueUrl,
     key: &str,
@@ -51,6 +72,15 @@ pub async fn post_with_url(
     Ok(response)
 }
 
+/// Builds a multipart form with the provided list of DICOM files.
+///
+/// # Arguments
+///
+/// * `files` - A list of DICOM files to be included in the form.
+///
+/// # Returns
+///
+/// * A multipart::Form containing all the provided DICOM files.
 fn build_form(files: &[FileDicomObject<InMemDicomObject>]) -> multipart::Form {
     let mut form = multipart::Form::new();
 

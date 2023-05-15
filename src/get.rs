@@ -5,6 +5,17 @@ use std::io::Cursor;
 
 use crate::{MilvueParams, MilvueUrl, StatusResponse};
 
+/// Fetches DICOM files from a study in the default environment.
+///
+/// # Arguments
+///
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+/// * `milvue_params` - A reference to MilvueParams containing parameters for the request
+///
+/// # Returns
+///
+/// * A Result containing a vector of DICOM files or an error
 pub async fn get(
     key: &str,
     study_id: &str,
@@ -13,6 +24,18 @@ pub async fn get(
     get_with_url(&MilvueUrl::default(), key, study_id, milvue_params).await
 }
 
+/// Fetches DICOM files from a study in the specified environment.
+///
+/// # Arguments
+///
+/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+/// * `milvue_params` - A reference to MilvueParams containing parameters for the request
+///
+/// # Returns
+///
+/// * A Result containing a vector of DICOM files or an error
 pub async fn get_with_url(
     env: &MilvueUrl,
     key: &str,
@@ -99,6 +122,16 @@ pub async fn get_with_url(
     Ok(dicoms)
 }
 
+/// Fetches the status of a study in the default environment.
+///
+/// # Arguments
+///
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+///
+/// # Returns
+///
+/// * A Result containing the response from the server or an error
 pub async fn get_study_status(
     key: &str,
     study_id: &str,
@@ -106,6 +139,17 @@ pub async fn get_study_status(
     get_study_status_with_url(&MilvueUrl::default(), key, study_id).await
 }
 
+/// Fetches the status of a study in the specified environment.
+///
+/// # Arguments
+///
+/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+///
+/// # Returns
+///
+/// * A Result containing the response from the server or an error
 pub async fn get_study_status_with_url(
     env: &MilvueUrl,
     key: &str,
@@ -138,10 +182,31 @@ pub async fn get_study_status_with_url(
     Ok(response)
 }
 
+/// Waits for a study to be done in the default environment.
+///
+/// # Arguments
+///
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+///
+/// # Returns
+///
+/// * A Result indicating success (empty Ok value) or an error
 pub async fn wait_for_done(key: &str, study_id: &str) -> Result<(), reqwest::Error> {
     wait_for_done_with_url(&MilvueUrl::default(), key, study_id).await
 }
 
+/// Waits for a study to be done in the specified environment.
+///
+/// # Arguments
+///
+/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `key` - A string slice that holds the API key
+/// * `study_id` - A string slice that holds the ID of the study
+///
+/// # Returns
+///
+/// * A Result indicating success (empty Ok value) or an error
 pub async fn wait_for_done_with_url(
     env: &MilvueUrl,
     key: &str,
