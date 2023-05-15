@@ -30,13 +30,15 @@ pub async fn main() {
         Ok(_) => println!("Done!"),
         Err(e) => panic!("Error: {}", e),
     }
-    let res = milvue_rs::get(
-        &key,
-        &study_instance_uid,
-        &milvue_rs::MilvueParams::default(),
-    )
-    .await
-    .unwrap();
+
+    let params = milvue_rs::MilvueParams {
+        language: Some(milvue_rs::Language::En),
+        ..Default::default()
+    };
+
+    let res = milvue_rs::get(&key, &study_instance_uid, &params)
+        .await
+        .unwrap();
     for (i, dicom_file) in res.iter().enumerate() {
         dicom_file.write_to_file(format!("file{}.dcm", i)).unwrap();
     }
