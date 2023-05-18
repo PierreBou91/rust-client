@@ -243,6 +243,8 @@ pub async fn wait_for_done_with_url(
     let mut status_body: StatusResponse = status_response.json().await?;
 
     while status_body.status != "done" {
+        let span = tracing::span!(tracing::Level::INFO, "wait_for_done");
+        let _enter = span.enter();
         info!(
             "Study {} is not done yet, waiting 3 seconds",
             study_instance_uid

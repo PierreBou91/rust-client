@@ -4,7 +4,6 @@ use std::{env, path::PathBuf, process};
 use clap::Parser;
 use dicom_object::open_file;
 use tracing::{debug, error};
-use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -17,7 +16,7 @@ struct Args {
 #[tokio::main]
 pub async fn main() {
     let subscriber = tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::DEBUG)
+        .with_env_filter("milvue_rs=info")
         .without_time()
         .finish();
     tracing::subscriber::set_global_default(subscriber)
