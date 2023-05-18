@@ -312,6 +312,7 @@ impl Display for StaticReportFormat {
 pub fn check_study_uids(
     dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<String, Box<dyn std::error::Error>> {
+    // TODO: Improve error handling
     let study_uid = dicom_list[0]
         .element_by_name("StudyInstanceUID")?
         .to_str()?
