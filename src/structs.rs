@@ -1,4 +1,4 @@
-use reqwest::header;
+use reqwest::{header, Response};
 use std::{env, fmt::Display};
 use thiserror::Error;
 
@@ -21,6 +21,10 @@ pub enum MilvueError {
     MulterError(#[from] multer::Error),
     #[error("Error with the dicom object crate: {0}")]
     DicomObjectError(#[from] dicom_object::Error),
+    #[error("Error casting a value with the dicom crate: {0}")]
+    DicomCastError(#[from] dicom::core::value::CastValueError),
+    #[error("Status response error: {0:?}")]
+    StatusResponseError(Response),
 }
 
 /// Enum representing possible Milvue URLs.

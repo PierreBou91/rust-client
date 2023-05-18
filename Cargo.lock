@@ -1017,6 +1017,7 @@ dependencies = [
  "clap",
  "dicom",
  "dicom-object",
+ "http",
  "multer",
  "reqwest",
  "serde",
