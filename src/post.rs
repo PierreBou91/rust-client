@@ -2,7 +2,7 @@ use dicom::object::InMemDicomObject;
 use dicom_object::FileDicomObject;
 use reqwest::{header, multipart, Client};
 
-use crate::MilvueUrl;
+use crate::{structs::MilvueError, MilvueUrl};
 
 /// Sends a POST request to upload DICOM files in the default environment.
 ///
@@ -17,7 +17,7 @@ use crate::MilvueUrl;
 pub async fn post(
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
-) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+) -> Result<reqwest::Response, MilvueError> {
     post_with_url(&MilvueUrl::default(), key, dicom_list).await
 }
 
@@ -36,13 +36,14 @@ pub async fn post_with_url(
     env: &MilvueUrl,
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
-) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
+) -> Result<reqwest::Response, MilvueError> {
     let milvue_api_url = format!("{}/v3/studies", MilvueUrl::get_url(env)?);
     let mut headers = header::HeaderMap::new();
 
-    let mut api_header = header::HeaderValue::from_str(key).unwrap();
-    api_header.set_sensitive(true);
-    headers.insert("x-goog-meta-owner", api_header);
+    let mut api_key = header::HeaderValue::from_str(key)?;
+    api_key.set_sensitive(true);
+
+    headers.insert("x-goog-meta-owner", api_key);
 
     headers.insert(
         header::CONTENT_TYPE,
@@ -54,20 +55,11 @@ pub async fn post_with_url(
         header::HeaderValue::from_static("application/dicom"),
     );
 
-    println!("Building form");
     let form = build_form(dicom_list);
 
-    println!("Building client");
-    let client = Client::builder()
-        .default_headers(headers)
-        // .https_only(true)
-        .build()
-        .unwrap();
+    let client = Client::builder().default_headers(headers).build()?;
 
-    println!("Sending request");
-    let response = client.post(milvue_api_url).multipart(form).send().await?;
-
-    println!("Response {:#?}", response);
+    let response = client.post(milvue_api_url).multipart(form?).send().await?;
 
     Ok(response)
 }
@@ -81,23 +73,17 @@ pub async fn post_with_url(
 /// # Returns
 ///
 /// * A multipart::Form containing all the provided DICOM files.
-fn build_form(files: &[FileDicomObject<InMemDicomObject>]) -> multipart::Form {
+fn build_form(files: &[FileDicomObject<InMemDicomObject>]) -> Result<multipart::Form, MilvueError> {
     let mut form = multipart::Form::new();
 
     for (i, dicom_file) in files.iter().enumerate() {
-        // let sop_instance = dicom_file
-        //     .element_by_name("SOPInstanceUID")
-        //     .unwrap()
-        //     .to_str()
-        //     .unwrap()
         let mut buffer = Vec::new();
-        dicom_file.write_all(&mut buffer).unwrap();
+        dicom_file.write_all(&mut buffer)?;
         let part = multipart::Part::bytes(buffer)
-            // .file_name(sop_instance)
-            .file_name(format!("file{}.dcm", i))
-            .mime_str("application/dicom")
-            .unwrap();
+            .file_name(format!("file{}.dcm", i)) // TODO: Add possibility to get the file name
+            .mime_str("application/dicom")?;
         form = form.part(format!("file{}", i), part);
     }
-    form
+
+    Ok(form)
 }

@@ -1,7 +1,9 @@
 // use dicom_object::open_file;
-use std::path::PathBuf;
+use std::{path::PathBuf, process};
 
 use clap::Parser;
+use milvue_rs::MilvueUrl;
+use tracing::error;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -13,8 +15,17 @@ struct Args {
 
 #[tokio::main]
 pub async fn main() {
+    tracing_subscriber::fmt::init();
     let args = Args::parse();
     println!("args: {:?}", args);
+    let envar = match MilvueUrl::DefaultUrl.get_url() {
+        Ok(url) => url,
+        Err(e) => {
+            error!("{}", e);
+            process::exit(1);
+        }
+    };
+    print!("envar: {}", envar);
     // let key = env::var("MILVUE_API_KEY").unwrap();
     // let dicom_list = vec![
     //     open_file("DX000000.dcm").unwrap(),
