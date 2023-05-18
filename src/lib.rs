@@ -14,7 +14,8 @@
 //! The primary interaction with the API involves two steps:
 //!
 //! 1. Submitting DICOM files for analysis using the [post()] or [post_with_url()] functions.
-//! 2. Fetching the resulting analysis using the [get()], [get_study_status()], [wait_for_done()], or [wait_for_done_with_url()] functions.
+//! 2. Fetching the resulting analysis using the [get()], [get_with_url()], [get_study_status()], [get_study_status_with_url()],
+//! [wait_for_done()], or [wait_for_done_with_url()] functions.
 //!
 //! The library provides a variety of structs and enums to support these interactions, including:
 //!
@@ -78,7 +79,10 @@ mod get;
 mod post;
 mod structs;
 
-pub use get::{get, get_study_status, wait_for_done, wait_for_done_with_url};
+pub use get::{
+    get, get_study_status, get_study_status_with_url, get_with_url, wait_for_done,
+    wait_for_done_with_url,
+};
 pub use post::{post, post_with_url};
 pub use structs::{
     check_study_uids, InferenceCommand, Language, MilvueParams, MilvueUrl, OutputFormat,
