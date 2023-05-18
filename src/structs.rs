@@ -44,7 +44,7 @@ impl MilvueUrl {
     /// # Returns
     ///
     /// * A Result wrapping a String representation of the URL, or an error if the environment variable does not exist.
-    pub fn get_url(&self) -> Result<String, MilvueError> {
+    pub fn get_url_from_envar(&self) -> Result<String, MilvueError> {
         match self {
             MilvueUrl::Dev => env::var("MILVUE_API_URL_DEV")
                 .map_err(|_| MilvueError::EnvVarNotFound("MILVUE_API_URL_DEV".into())),
