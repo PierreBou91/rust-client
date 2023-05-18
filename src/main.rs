@@ -3,7 +3,8 @@ use std::{path::PathBuf, process};
 
 use clap::Parser;
 use milvue_rs::MilvueUrl;
-use tracing::error;
+use tracing::{debug, error};
+use tracing_subscriber::filter::LevelFilter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -15,8 +16,15 @@ struct Args {
 
 #[tokio::main]
 pub async fn main() {
-    tracing_subscriber::fmt::init();
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(LevelFilter::TRACE)
+        .without_time()
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Error while setting subscriber for tracing.");
+
     let args = Args::parse();
+    debug!("I'm debugging!");
     println!("args: {:?}", args);
     let envar = match MilvueUrl::DefaultUrl.get_url_from_envar() {
         Ok(url) => url,
