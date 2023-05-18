@@ -15,20 +15,28 @@ use crate::{structs::MilvueError, MilvueParams, MilvueUrl, StatusResponse};
 ///
 /// # Returns
 ///
-/// * A Result containing a vector of DICOM files or an error
+/// * An option containing a vector of DICOM files or None, in the case of a None, this means that there is no output for the given
+/// configuration. For example, if you request a SmartXpert inference on a skull X-ray, there will be no output since SmartXpert
+/// doesn't support skull X-rays.
 pub async fn get(
     key: &str,
     study_id: &str,
     milvue_params: &MilvueParams,
 ) -> Result<Option<Vec<FileDicomObject<InMemDicomObject>>>, MilvueError> {
-    get_with_url(&MilvueUrl::default(), key, study_id, milvue_params).await
+    get_with_url(
+        &MilvueUrl::default().get_url_from_envar()?,
+        key,
+        study_id,
+        milvue_params,
+    )
+    .await
 }
 
 /// Fetches DICOM files from a study in the specified environment.
 ///
 /// # Arguments
 ///
-/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `url` - A reference to MilvueUrl that specifies the environment
 /// * `key` - A string slice that holds the API key
 /// * `study_id` - A string slice that holds the ID of the study
 /// * `milvue_params` - A reference to MilvueParams containing parameters for the request
@@ -39,12 +47,12 @@ pub async fn get(
 /// for the given configuration. For example, if you request a SmartXpert inference on a skull X-ray, there will be no
 /// output since SmartXpert doesn't support skull X-rays.
 pub async fn get_with_url(
-    env: &MilvueUrl,
+    url: &str,
     key: &str,
     study_id: &str,
     milvue_params: &MilvueParams,
 ) -> Result<Option<Vec<FileDicomObject<InMemDicomObject>>>, MilvueError> {
-    let milvue_api_url = format!("{}/v3/studies/{}", MilvueUrl::get_url(env)?, study_id);
+    let milvue_api_url = format!("{}/v3/studies/{}", url, study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -110,14 +118,14 @@ pub async fn get_with_url(
 ///
 /// * A Result containing the response from the server or an error
 pub async fn get_study_status(key: &str, study_id: &str) -> Result<reqwest::Response, MilvueError> {
-    get_study_status_with_url(&MilvueUrl::default(), key, study_id).await
+    get_study_status_with_url(&MilvueUrl::default().get_url_from_envar()?, key, study_id).await
 }
 
 /// Fetches the status of a study in the specified environment.
 ///
 /// # Arguments
 ///
-/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `url` - A reference to MilvueUrl that specifies the environment
 /// * `key` - A string slice that holds the API key
 /// * `study_id` - A string slice that holds the ID of the study
 ///
@@ -125,11 +133,11 @@ pub async fn get_study_status(key: &str, study_id: &str) -> Result<reqwest::Resp
 ///
 /// * A Result containing the response from the server or an error
 pub async fn get_study_status_with_url(
-    env: &MilvueUrl,
+    url: &str,
     key: &str,
     study_id: &str,
 ) -> Result<reqwest::Response, MilvueError> {
-    let milvue_api_url = format!("{}/v3/studies/{}", MilvueUrl::get_url(env)?, study_id);
+    let milvue_api_url = format!("{}/v3/studies/{}", url, study_id);
 
     let mut headers = header::HeaderMap::new();
 
@@ -160,14 +168,14 @@ pub async fn get_study_status_with_url(
 ///
 /// * A Result indicating success (empty Ok value) or an error
 pub async fn wait_for_done(key: &str, study_id: &str) -> Result<(), MilvueError> {
-    wait_for_done_with_url(&MilvueUrl::default(), key, study_id).await
+    wait_for_done_with_url(&MilvueUrl::default().get_url_from_envar()?, key, study_id).await
 }
 
 /// Waits for a study to be done in the specified environment.
 ///
 /// # Arguments
 ///
-/// * `env` - A reference to MilvueUrl that specifies the environment
+/// * `url` - A reference to MilvueUrl that specifies the environment
 /// * `key` - A string slice that holds the API key
 /// * `study_id` - A string slice that holds the ID of the study
 ///
@@ -175,16 +183,16 @@ pub async fn wait_for_done(key: &str, study_id: &str) -> Result<(), MilvueError>
 ///
 /// * A Result indicating success (empty Ok value) or an error
 pub async fn wait_for_done_with_url(
-    env: &MilvueUrl,
+    url: &str,
     key: &str,
     study_id: &str,
 ) -> Result<(), MilvueError> {
-    let mut status_response = get_study_status_with_url(env, key, study_id).await?;
+    let mut status_response = get_study_status_with_url(url, key, study_id).await?;
 
     let mut status_body: StatusResponse = status_response.json().await?;
 
     while status_body.status != "done" {
-        status_response = get_study_status_with_url(env, key, study_id).await?;
+        status_response = get_study_status_with_url(url, key, study_id).await?;
         status_body = status_response.json().await?;
         std::thread::sleep(std::time::Duration::from_secs(3));
     }

@@ -18,7 +18,7 @@ pub async fn main() {
     tracing_subscriber::fmt::init();
     let args = Args::parse();
     println!("args: {:?}", args);
-    let envar = match MilvueUrl::DefaultUrl.get_url() {
+    let envar = match MilvueUrl::DefaultUrl.get_url_from_envar() {
         Ok(url) => url,
         Err(e) => {
             error!("{}", e);

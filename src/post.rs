@@ -18,14 +18,14 @@ pub async fn post(
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<reqwest::Response, MilvueError> {
-    post_with_url(&MilvueUrl::default(), key, dicom_list).await
+    post_with_url(&MilvueUrl::default().get_url_from_envar()?, key, dicom_list).await
 }
 
 /// Sends a POST request to upload DICOM files to a specific URL.
 ///
 /// # Arguments
 ///
-/// * `env` - A reference to MilvueUrl that specifies the environment.
+/// * `url` - A reference to MilvueUrl that specifies the environment.
 /// * `key` - A string slice that holds the API key.
 /// * `dicom_list` - A list of DICOM files to be uploaded.
 ///
@@ -33,11 +33,11 @@ pub async fn post(
 ///
 /// * A Result wrapping a reqwest::Response indicating the HTTP response or an error.
 pub async fn post_with_url(
-    env: &MilvueUrl,
+    url: &str,
     key: &str,
     dicom_list: &[FileDicomObject<InMemDicomObject>],
 ) -> Result<reqwest::Response, MilvueError> {
-    let milvue_api_url = format!("{}/v3/studies", MilvueUrl::get_url(env)?);
+    let milvue_api_url = format!("{}/v3/studies", url);
     let mut headers = header::HeaderMap::new();
 
     let mut api_key = header::HeaderValue::from_str(key)?;
@@ -80,7 +80,7 @@ fn build_form(files: &[FileDicomObject<InMemDicomObject>]) -> Result<multipart::
         let mut buffer = Vec::new();
         dicom_file.write_all(&mut buffer)?;
         let part = multipart::Part::bytes(buffer)
-            .file_name(format!("file{}.dcm", i)) // TODO: Add possibility to get the file name
+            .file_name(format!("file{}.dcm", i)) // TODO: Add possibility to get the file name if ever relevant
             .mime_str("application/dicom")?;
         form = form.part(format!("file{}", i), part);
     }
