@@ -1,7 +1,27 @@
+use reqwest::header;
 use std::{env, fmt::Display};
+use thiserror::Error;
 
 use dicom_object::{FileDicomObject, InMemDicomObject};
 use serde::Deserialize;
+
+#[derive(Error, Debug)]
+pub enum MilvueError {
+    #[error("Header creation error: {0}")]
+    HeaderCreationError(#[from] header::InvalidHeaderValue),
+    #[error("Request error: {0}")]
+    RequestError(#[from] reqwest::Error),
+    #[error("Environment variable not found: {0}")]
+    EnvVarNotFound(String),
+    #[error("No content type in Milvue response header, this is likely an error with the Milvue API, please contact support@milvue for assistance.")]
+    NoContentType,
+    #[error("Error parsing a header element to a string: {0}")]
+    ToStringError(#[from] header::ToStrError),
+    #[error("Multer error, within milvue_rs the Multer crate is mainly used to fetch the multipart response so the error likely comes from the get module: {0}")]
+    MulterError(#[from] multer::Error),
+    #[error("Error with the dicom object crate: {0}")]
+    DicomObjectError(#[from] dicom_object::Error),
+}
 
 /// Enum representing possible Milvue URLs.
 #[derive(Default)]
@@ -24,12 +44,16 @@ impl MilvueUrl {
     /// # Returns
     ///
     /// * A Result wrapping a String representation of the URL, or an error if the environment variable does not exist.
-    pub fn get_url(&self) -> Result<String, std::env::VarError> {
+    pub fn get_url(&self) -> Result<String, MilvueError> {
         match self {
-            MilvueUrl::Dev => env::var("MILVUE_API_URL_DEV"),
-            MilvueUrl::Staging => env::var("MILVUE_API_URL_STAGING"),
-            MilvueUrl::Prod => env::var("MILVUE_API_URL_PROD"),
-            MilvueUrl::DefaultUrl => env::var("MILVUE_API_URL"),
+            MilvueUrl::Dev => env::var("MILVUE_API_URL_DEV")
+                .map_err(|_| MilvueError::EnvVarNotFound("MILVUE_API_URL_DEV".into())),
+            MilvueUrl::Staging => env::var("MILVUE_API_URL_STAGING")
+                .map_err(|_| MilvueError::EnvVarNotFound("MILVUE_API_URL_STAGING".into())),
+            MilvueUrl::Prod => env::var("MILVUE_API_URL_PROD")
+                .map_err(|_| MilvueError::EnvVarNotFound("MILVUE_API_URL_PROD".into())),
+            MilvueUrl::DefaultUrl => env::var("MILVUE_API_URL")
+                .map_err(|_| MilvueError::EnvVarNotFound("MILVUE_API_URL".into())),
         }
     }
 }
