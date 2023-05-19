@@ -25,6 +25,8 @@ pub enum MilvueError {
     DicomCastError(#[from] dicom::core::value::CastValueError),
     #[error("Status response error: {0:?}")]
     StatusResponseError(Response),
+    #[error("More than one study instance UID among files to be uploaded.")]
+    StudyUidMismatch,
 }
 
 /// Enum representing possible Milvue URLs.
@@ -311,8 +313,7 @@ impl Display for StaticReportFormat {
 /// or an error if there is a mismatch.
 pub fn check_study_uids(
     dicom_list: &[FileDicomObject<InMemDicomObject>],
-) -> Result<String, Box<dyn std::error::Error>> {
-    // TODO: Improve error handling
+) -> Result<String, MilvueError> {
     let study_uid = dicom_list[0]
         .element_by_name("StudyInstanceUID")?
         .to_str()?
@@ -323,11 +324,7 @@ pub fn check_study_uids(
             .to_str()?
             .to_string();
         if study_uid != current_study_uid {
-            return Err(format!(
-                "StudyInstanceUID mismatch: expected {}, got {}", // TODO: Improve error message
-                study_uid, current_study_uid
-            )
-            .into());
+            return Err(MilvueError::StudyUidMismatch);
         }
     }
     Ok(study_uid)
