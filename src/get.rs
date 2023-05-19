@@ -128,7 +128,7 @@ pub async fn get_with_url(
         }
         dicom_count += 1;
     }
-    info!("{} DICOM files successfully parsed", dicom_count);
+    info!("{} DICOM files successfully parsed", dicom_count - 1);
     Ok(Some(dicoms))
 }
 
