@@ -5,26 +5,76 @@ use thiserror::Error;
 use dicom_object::{FileDicomObject, InMemDicomObject};
 use serde::Deserialize;
 
+/// Represents various errors that can occur in the `milvue_rs` library.
 #[derive(Error, Debug)]
 pub enum MilvueError {
+    /// Represents an error while creating an HTTP header.
+    ///
+    /// This error is typically triggered when a value being added to a header
+    /// is invalid according to HTTP specifications.
     #[error("Header creation error: {0}")]
     HeaderCreationError(#[from] header::InvalidHeaderValue),
+
+    /// Represents a network request error.
+    ///
+    /// This error is typically triggered when there's a problem with a network
+    /// request, such as a failure to connect to the server, a timeout, etc.
     #[error("Request error: {0}")]
     RequestError(#[from] reqwest::Error),
+
+    /// Represents an error when an expected environment variable is not found.
+    ///
+    /// This error is typically triggered when the library attempts to read an
+    /// environment variable that hasn't been set.
     #[error("Environment variable not found: {0}")]
     EnvVarNotFound(String),
+
+    /// Represents an error when no content type is found in a response header.
+    ///
+    /// This error is typically triggered when a response from the Milvue API
+    /// does not include a Content-Type header.
     #[error("No content type in Milvue response header, this is likely an error with the Milvue API, please contact support@milvue for assistance.")]
     NoContentType,
+
+    /// Represents an error when converting a header value to a string fails.
+    ///
+    /// This error is typically triggered when a header value contains non-ASCII
+    /// characters, which are not allowed in HTTP headers.
     #[error("Error parsing a header element to a string: {0}")]
     ToStringError(#[from] header::ToStrError),
+
+    /// Represents an error when handling multipart form data.
+    ///
+    /// This error is typically triggered when there's a problem parsing the
+    /// multipart form data in a response from the Milvue API.
     #[error("Multer error, within milvue_rs the Multer crate is mainly used to fetch the multipart response so the error likely comes from the get module: {0}")]
     MulterError(#[from] multer::Error),
+
+    /// Represents an error when working with DICOM objects.
+    ///
+    /// This error is typically triggered when there's a problem reading a DICOM
+    /// file or manipulating a DICOM object.
     #[error("Error with the dicom object crate: {0}")]
     DicomObjectError(#[from] dicom_object::Error),
+
+    /// Represents an error when casting a DICOM value.
+    ///
+    /// This error is typically triggered when attempting to cast a DICOM value
+    /// to an incompatible type.
     #[error("Error casting a value with the dicom crate: {0}")]
     DicomCastError(#[from] dicom::core::value::CastValueError),
+
+    /// Represents an error when an HTTP response has an unexpected status.
+    ///
+    /// This error is typically triggered when the Milvue API returns a
+    /// non-successful HTTP status code.
     #[error("Status response error: {0:?}")]
     StatusResponseError(Response),
+
+    /// Represents an error when uploaded DICOM files do not all belong to the same study.
+    ///
+    /// This error is typically triggered when trying to upload multiple DICOM files
+    /// that have different Study Instance UIDs.
     #[error("More than one study instance UID among files to be uploaded.")]
     StudyUidMismatch,
 }

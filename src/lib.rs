@@ -85,6 +85,7 @@ pub use get::{
 };
 pub use post::{post, post_with_url};
 pub use structs::{
-    check_study_uids, InferenceCommand, Language, MilvueParams, MilvueUrl, OutputFormat,
-    OutputSelection, RecapTheme, StaticReportFormat, StatusResponse, StructuredReportFormat,
+    check_study_uids, InferenceCommand, Language, MilvueError, MilvueParams, MilvueUrl,
+    OutputFormat, OutputSelection, RecapTheme, StaticReportFormat, StatusResponse,
+    StructuredReportFormat,
 };
