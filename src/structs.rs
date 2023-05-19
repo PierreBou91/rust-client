@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use reqwest::{header, Response};
 use std::{env, fmt::Display};
 use thiserror::Error;
@@ -209,6 +210,7 @@ impl Default for MilvueParams {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the output format expected from the Milvue API.
 pub enum OutputFormat {
     /// Overlay contains a copy of the original image with the annotations in a separate dicom tag.
@@ -230,6 +232,7 @@ impl Display for OutputFormat {
 }
 
 /// Represents the language of the annotations.
+#[derive(Clone, Debug, ValueEnum)]
 pub enum Language {
     /// French
     Fr,
@@ -258,6 +261,7 @@ impl Display for Language {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the inference command for the Milvue request.
 pub enum InferenceCommand {
     /// SmartUrgences yields the pathology detection.

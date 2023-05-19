@@ -3,8 +3,9 @@ use std::{env, path::PathBuf, process};
 
 use clap::{Parser, ValueEnum};
 use dicom_object::open_file;
-// use tracing::{debug, error, info, trace, warn};
-use tracing::error;
+use milvue_rs::{InferenceCommand, Language, OutputFormat};
+use tracing::{debug, error, info, trace, warn};
+// use tracing::error;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -14,14 +15,27 @@ struct Args {
     dicoms: Vec<PathBuf>,
     /// Log level
     #[arg(value_enum)]
-    #[clap(short, long, default_value = "info")]
+    #[clap(short = 'L', long, default_value = "info")]
     log_level: LogLevel,
-    /// Displays timer with log messages
+    /// Displays timestamp with log messages
     #[clap(short, long)]
-    timer: bool,
+    timestamp: bool,
+    /// Change the language of the annotated images
+    #[arg(value_enum)]
+    #[clap(short, long, default_value = "en")]
+    language: Language,
+    // Add the signed url option when it's implemented
+    /// Output format of the annotated images
+    #[arg(value_enum)]
+    #[clap(short, long, default_value = "overlay")]
+    format: OutputFormat,
+    /// Inference command to run on the dicom dataset
+    #[arg(value_enum)]
+    #[clap(short, long, default_value = "smart-urgences")]
+    inference_command: Vec<InferenceCommand>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+#[derive(Copy, Clone, ValueEnum, Debug)]
 enum LogLevel {
     Debug,
     Info,
@@ -36,51 +50,52 @@ pub async fn main() {
 
     tracing_subscriber_handler(&args);
 
-    let key = env::var("MILVUE_API_KEY").unwrap();
+    info!("Inference command: {:?}", args.inference_command);
+    //     let key = env::var("MILVUE_API_KEY").unwrap();
 
-    let mut dicom_list = Vec::new();
-    for file in args.dicoms {
-        match open_file(&file) {
-            Ok(dicom_file) => dicom_list.push(dicom_file),
-            Err(e) => {
-                error!("Error: {}", e);
-                process::exit(1);
-            }
-        }
-    }
-    let study_instance_uid = milvue_rs::check_study_uids(&dicom_list).unwrap();
+    //     let mut dicom_list = Vec::new();
+    //     for file in args.dicoms {
+    //         match open_file(&file) {
+    //             Ok(dicom_file) => dicom_list.push(dicom_file),
+    //             Err(e) => {
+    //                 error!("Error: {}", e);
+    //                 process::exit(1);
+    //             }
+    //         }
+    //     }
+    //     let study_instance_uid = milvue_rs::check_study_uids(&dicom_list).unwrap();
 
-    match milvue_rs::post(&key, &mut dicom_list).await {
-        Ok(res) => res,
-        Err(e) => panic!("Error: {}", e),
-    };
+    //     match milvue_rs::post(&key, &mut dicom_list).await {
+    //         Ok(res) => res,
+    //         Err(e) => panic!("Error: {}", e),
+    //     };
 
-    // match post_response.status() {
-    //     reqwest::StatusCode::OK => println!("Success!"),
-    //     status => println!("Expected status 200 got: {:#?}", status),
-    // }
+    //     // match post_response.status() {
+    //     //     reqwest::StatusCode::OK => println!("Success!"),
+    //     //     status => println!("Expected status 200 got: {:#?}", status),
+    //     // }
 
-    match milvue_rs::wait_for_done(&key, &study_instance_uid).await {
-        Ok(_) => {}
-        Err(e) => panic!("Error: {}", e),
-    }
+    //     match milvue_rs::wait_for_done(&key, &study_instance_uid).await {
+    //         Ok(_) => {}
+    //         Err(e) => panic!("Error: {}", e),
+    //     }
 
-    let params = milvue_rs::MilvueParams {
-        language: Some(milvue_rs::Language::En),
-        ..Default::default()
-    };
+    //     let params = milvue_rs::MilvueParams {
+    //         language: Some(milvue_rs::Language::En),
+    //         ..Default::default()
+    //     };
 
-    let dicoms = match milvue_rs::get(&key, &study_instance_uid, &params).await {
-        Ok(res) => match res {
-            Some(d) => d,
-            None => panic!("No DICOM files found"),
-        },
-        Err(e) => panic!("Error: {}", e),
-    };
+    //     let dicoms = match milvue_rs::get(&key, &study_instance_uid, &params).await {
+    //         Ok(res) => match res {
+    //             Some(d) => d,
+    //             None => panic!("No DICOM files found"),
+    //         },
+    //         Err(e) => panic!("Error: {}", e),
+    //     };
 
-    for (i, dicom_file) in dicoms.iter().enumerate() {
-        dicom_file.write_to_file(format!("file{}.dcm", i)).unwrap();
-    }
+    //     for (i, dicom_file) in dicoms.iter().enumerate() {
+    //         dicom_file.write_to_file(format!("file{}.dcm", i)).unwrap();
+    //     }
 }
 
 fn tracing_subscriber_handler(args: &Args) {
@@ -94,7 +109,7 @@ fn tracing_subscriber_handler(args: &Args) {
 
     // "if" because the subscriber doesn't yield the same type with or without time wich prevents
     // using a match statement.
-    if args.timer {
+    if args.timestamp {
         let sub = tracing_subscriber::fmt::Subscriber::builder()
             .with_env_filter(env_filter)
             .finish();
