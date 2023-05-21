@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use reqwest::{header, Response};
 use std::{env, fmt::Display};
 use thiserror::Error;
@@ -5,78 +6,72 @@ use thiserror::Error;
 use dicom_object::{FileDicomObject, InMemDicomObject};
 use serde::Deserialize;
 
-/// Represents various errors that can occur in the `milvue_rs` library.
+/// Represents errors that can occur within the `milvue_rs` library.
 #[derive(Error, Debug)]
 pub enum MilvueError {
-    /// Represents an error while creating an HTTP header.
+    /// Error occurred while creating an HTTP header.
     ///
-    /// This error is typically triggered when a value being added to a header
-    /// is invalid according to HTTP specifications.
+    /// Typically triggered when a value added to a header violates HTTP specifications.
     #[error("Header creation error: {0}")]
     HeaderCreationError(#[from] header::InvalidHeaderValue),
 
-    /// Represents a network request error.
+    /// Network request error.
     ///
-    /// This error is typically triggered when there's a problem with a network
-    /// request, such as a failure to connect to the server, a timeout, etc.
+    /// Typically triggered when a network request fails (e.g., failed connection, timeout).
     #[error("Request error: {0}")]
     RequestError(#[from] reqwest::Error),
 
-    /// Represents an error when an expected environment variable is not found.
+    /// Error occurred when an expected environment variable is not found.
     ///
-    /// This error is typically triggered when the library attempts to read an
-    /// environment variable that hasn't been set.
+    /// Typically triggered when the library tries to read an unset environment variable.
     #[error("Environment variable not found: {0}")]
     EnvVarNotFound(String),
 
-    /// Represents an error when no content type is found in a response header.
+    /// No content type found in a response header.
     ///
-    /// This error is typically triggered when a response from the Milvue API
-    /// does not include a Content-Type header.
-    #[error("No content type in Milvue response header, this is likely an error with the Milvue API, please contact support@milvue for assistance.")]
+    /// Typically triggered when a response from the Milvue API lacks a Content-Type header.
+    #[error("No content type in Milvue response header. This is likely an error with the Milvue API, please contact support@milvue for assistance.")]
     NoContentType,
 
-    /// Represents an error when converting a header value to a string fails.
+    /// Error occurred when converting a header value to a string.
     ///
-    /// This error is typically triggered when a header value contains non-ASCII
-    /// characters, which are not allowed in HTTP headers.
+    /// Typically triggered when a header value contains non-ASCII characters.
     #[error("Error parsing a header element to a string: {0}")]
     ToStringError(#[from] header::ToStrError),
 
-    /// Represents an error when handling multipart form data.
+    /// Error occurred when handling multipart form data.
     ///
-    /// This error is typically triggered when there's a problem parsing the
-    /// multipart form data in a response from the Milvue API.
-    #[error("Multer error, within milvue_rs the Multer crate is mainly used to fetch the multipart response so the error likely comes from the get module: {0}")]
+    /// Typically triggered when parsing multipart form data from a Milvue API response fails.
+    #[error("Multer error. The Multer crate, primarily used to fetch the multipart response within milvue_rs, may be the source of this error: {0}")]
     MulterError(#[from] multer::Error),
 
-    /// Represents an error when working with DICOM objects.
+    /// Error occurred when working with DICOM objects.
     ///
-    /// This error is typically triggered when there's a problem reading a DICOM
-    /// file or manipulating a DICOM object.
-    #[error("Error with the dicom object crate: {0}")]
+    /// Typically triggered when reading a DICOM file or manipulating a DICOM object fails.
+    #[error("Error with the DICOM object crate: {0}")]
     DicomObjectError(#[from] dicom_object::Error),
 
-    /// Represents an error when casting a DICOM value.
+    /// Error occurred when casting a DICOM value.
     ///
-    /// This error is typically triggered when attempting to cast a DICOM value
-    /// to an incompatible type.
-    #[error("Error casting a value with the dicom crate: {0}")]
+    /// Typically triggered when trying to cast a DICOM value to an incompatible type.
+    #[error("Error casting a value with the DICOM crate: {0}")]
     DicomCastError(#[from] dicom::core::value::CastValueError),
 
-    /// Represents an error when an HTTP response has an unexpected status.
+    /// HTTP response has an unexpected status.
     ///
-    /// This error is typically triggered when the Milvue API returns a
-    /// non-successful HTTP status code.
+    /// Typically triggered when the Milvue API returns a non-successful HTTP status code.
     #[error("Status response error: {0:?}")]
     StatusResponseError(Response),
 
-    /// Represents an error when uploaded DICOM files do not all belong to the same study.
+    /// Uploaded DICOM files do not all belong to the same study.
     ///
-    /// This error is typically triggered when trying to upload multiple DICOM files
-    /// that have different Study Instance UIDs.
-    #[error("More than one study instance UID among files to be uploaded.")]
+    /// Typically triggered when trying to upload DICOM files with different Study Instance UIDs.
+    #[error("More than one Study Instance UID found among files to be uploaded.")]
     StudyUidMismatch,
+
+    /// No inference command provided.
+    #[error("No inference command provided.")]
+    NoInferenceCommand,
 }
 
 /// Enum representing possible Milvue URLs.
@@ -124,6 +119,7 @@ pub struct StatusResponse {
     pub message: String,
 }
 
+#[derive(Debug)]
 /// Represents the parameters to configure the Milvue request.
 pub struct MilvueParams {
     /// Whether or not to return a signed URL to handle the DICOM files instead of downloading them directly.
@@ -209,6 +205,7 @@ impl Default for MilvueParams {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the output format expected from the Milvue API.
 pub enum OutputFormat {
     /// Overlay contains a copy of the original image with the annotations in a separate dicom tag.
@@ -230,6 +227,7 @@ impl Display for OutputFormat {
 }
 
 /// Represents the language of the annotations.
+#[derive(Clone, Debug, ValueEnum)]
 pub enum Language {
     /// French
     Fr,
@@ -258,6 +256,7 @@ impl Display for Language {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the inference command for the Milvue request.
 pub enum InferenceCommand {
     /// SmartUrgences yields the pathology detection.
@@ -275,6 +274,7 @@ impl Display for InferenceCommand {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the output selection for the Milvue request.
 pub enum OutputSelection {
     /// All contains all the possible outputs including negatives and out of scope results.
@@ -298,6 +298,7 @@ impl Display for OutputSelection {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the recap theme for the Milvue request.
 pub enum RecapTheme {
     Dark,
@@ -316,6 +317,7 @@ impl Display for RecapTheme {
 /// Represents the structured report format for the Milvue request.
 ///
 /// If set, this parameter will return a structured report in the specified format.
+#[derive(Clone, Debug, ValueEnum)]
 pub enum StructuredReportFormat {
     Lite,
     Normal,
@@ -334,6 +336,7 @@ impl Display for StructuredReportFormat {
     }
 }
 
+#[derive(Clone, Debug, ValueEnum)]
 /// Represents the static report format for the Milvue request.
 pub enum StaticReportFormat {
     Rgb,
