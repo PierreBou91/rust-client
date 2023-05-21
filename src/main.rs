@@ -1,15 +1,16 @@
-// use dicom_object::open_file;
-use std::{env, path::PathBuf, process, sync::Arc};
+use std::{env, fs, path::PathBuf, process, sync::Arc};
 
 use clap::{Parser, ValueEnum};
-use dicom_object::{open_file, FileDicomObject, InMemDicomObject};
+use dicom::core::{DataElement, PrimitiveValue, VR};
+use dicom_object::{open_file, FileDicomObject, InMemDicomObject, Tag};
 use milvue_rs::{
     InferenceCommand, Language, MilvueError, MilvueParams, OutputFormat, OutputSelection,
     RecapTheme, StaticReportFormat, StructuredReportFormat,
 };
+use num_bigint::BigUint;
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
-// use tracing::error;
+use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -23,7 +24,7 @@ struct Args {
     /// Override the API key from the environment variable
     #[clap(short = 'k', long)]
     api_key: Option<String>,
-    /// Override the API URL from the environment variable
+    /// NOT YET IMPLEMENTED USE ENVARS Override the API URL from the environment variable
     #[clap(short, long)]
     api_url: Option<String>,
     /// Run SmartUrgences inference on the dataset
@@ -66,7 +67,6 @@ struct Args {
     // Options to be added when they are implemented in the library:
     // Signed URL
     // Timezone
-    // Output directory
 }
 
 #[derive(Copy, Clone, ValueEnum, Debug)]
@@ -92,6 +92,17 @@ pub async fn main() {
         }
     };
 
+    if !args.output_dir.exists() {
+        info!("Creating output directory: {}", args.output_dir.display());
+        match fs::create_dir_all(&args.output_dir) {
+            Ok(_) => {}
+            Err(e) => {
+                error!("Error while creating output directory: {}", e);
+                process::exit(1);
+            }
+        }
+    }
+
     let mut dicom_list = match dicom_list_from_args(&args.dicoms) {
         Some(dicom_list) => dicom_list,
         None => {
@@ -107,6 +118,10 @@ pub async fn main() {
             process::exit(1);
         }
     };
+
+    let new_study_instance_uid = generate_dicom_uid();
+
+    update_study_instance_uid(&mut dicom_list, &new_study_instance_uid);
 
     let key = match args.api_key {
         Some(key) => key,
@@ -127,7 +142,7 @@ pub async fn main() {
         }
     };
 
-    match milvue_rs::wait_for_done(&key, &study_instance_uid).await {
+    match milvue_rs::wait_for_done(&key, &new_study_instance_uid).await {
         Ok(_) => {}
         Err(e) => {
             error!("Error while waiting for study to be processed: {}", e);
@@ -135,14 +150,17 @@ pub async fn main() {
         }
     }
 
+    // if args.api_url.is_some() {
+    //     let api_url = Arc::new(args.api_url);
+    // }
     let key = Arc::new(key);
-    let study_instance_uid = Arc::new(study_instance_uid);
+    let new_study_instance_uid = Arc::new(new_study_instance_uid);
     let results = Arc::new(Mutex::new(Vec::new()));
     let mut handles = Vec::new();
 
     for config in params {
         let key_clone = Arc::clone(&key);
-        let uid_clone = Arc::clone(&study_instance_uid);
+        let uid_clone = Arc::clone(&new_study_instance_uid);
         let results_clone = Arc::clone(&results);
 
         let handle = tokio::spawn(async move {
@@ -164,12 +182,17 @@ pub async fn main() {
     }
 
     for handle in handles {
-        handle.await.unwrap();
+        handle.await.unwrap(); // Fine to unwrap here, thread should not panic unless fatal error.
     }
 
-    let results = results.lock().await;
+    let mut results = results.lock().await;
+
+    update_study_instance_uid(&mut results, &study_instance_uid);
+
     for (i, dicom_file) in results.iter().enumerate() {
-        dicom_file.write_to_file(format!("file{}.dcm", i)).unwrap();
+        dicom_file
+            .write_to_file(format!("{}/file{}.dcm", args.output_dir.display(), i))
+            .unwrap();
     }
 }
 
@@ -205,6 +228,8 @@ fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
             language: Some(args.language.clone()),
             recap_theme: Some(args.recap_theme.clone()),
             inference_command: InferenceCommand::SmartUrgences,
+            output_format: Some(args.format.clone()),
+            output_selection: Some(args.output_selection.clone()),
             static_report_format: Some(args.static_report.clone()),
             structured_report_format: Some(args.structured_report.clone()),
             ..Default::default()
@@ -215,6 +240,8 @@ fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
         let params = MilvueParams {
             language: Some(args.language.clone()),
             recap_theme: Some(args.recap_theme.clone()),
+            output_format: Some(args.format.clone()),
+            output_selection: Some(args.output_selection.clone()),
             inference_command: InferenceCommand::SmartXpert,
             static_report_format: Some(args.static_report.clone()),
             structured_report_format: Some(args.structured_report.clone()),
@@ -250,4 +277,28 @@ fn tracing_subscriber_handler(args: &Args) {
         tracing::subscriber::set_global_default(sub)
             .expect("Error while setting subscriber for tracing.");
     };
+}
+
+// Valid way of generating UID without a dedicated dicom OID
+// http://www.dclunie.com/medical-image-faq/html/part2.html#UUID
+pub fn generate_dicom_uid() -> String {
+    let uuid = Uuid::new_v4();
+    let bytes = uuid.as_bytes();
+    let bigint = BigUint::from_bytes_le(bytes);
+
+    format!("2.25.{}", bigint)
+}
+
+fn update_study_instance_uid(
+    dicom_list: &mut Vec<FileDicomObject<InMemDicomObject>>,
+    new_study_instance_uid: &str,
+) {
+    for dicom in dicom_list {
+        let new_element = DataElement::new(
+            Tag(0x0020, 0x000D),
+            VR::UI,
+            PrimitiveValue::Str(new_study_instance_uid.to_string()),
+        );
+        dicom.put(new_element);
+    }
 }
