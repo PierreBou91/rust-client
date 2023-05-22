@@ -19,7 +19,7 @@ struct Args {
     #[clap(required = true)]
     dicoms: Vec<PathBuf>,
     /// Output directory
-    #[clap(short = 'd', long, default_value = ".")]
+    #[clap(short = 'o', long, default_value = ".")]
     output_dir: PathBuf,
     /// Override the API key from the environment variable
     #[clap(short = 'k', long)]
@@ -29,10 +29,10 @@ struct Args {
     api_url: Option<String>,
     /// Run SmartUrgences inference on the dataset
     #[clap(short = 'u', long)]
-    smart_urgences: bool,
+    smarturgences: bool,
     /// Run SmartXpert inference on the dataset
     #[clap(short = 'x', long)]
-    smart_xpert: bool,
+    smartxpert: bool,
     /// Set the language for the annotated images
     #[arg(value_enum)]
     #[clap(short, long, default_value = "en")]
@@ -219,11 +219,11 @@ fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<Vec<FileDicomObject<InM
 /// Get the parameters from the command line arguments, and return a list of
 /// MilvueParams to be used for the inference.
 fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
-    if !args.smart_urgences && !args.smart_xpert {
+    if !args.smarturgences && !args.smartxpert {
         return Err(MilvueError::NoInferenceCommand);
     }
     let mut params_list = Vec::new();
-    if args.smart_urgences {
+    if args.smarturgences {
         let params = MilvueParams {
             language: Some(args.language.clone()),
             recap_theme: Some(args.recap_theme.clone()),
@@ -236,7 +236,7 @@ fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
         };
         params_list.push(params);
     }
-    if args.smart_xpert {
+    if args.smartxpert {
         let params = MilvueParams {
             language: Some(args.language.clone()),
             recap_theme: Some(args.recap_theme.clone()),
