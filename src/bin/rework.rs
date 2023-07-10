@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 use dicom_object::{open_file, FileDicomObject, InMemDicomObject};
@@ -28,6 +28,25 @@ enum LogLevel {
     Quiet,
 }
 
+enum Event {
+    Sent(String),
+    Predicted(String),
+    Downloaded(String),
+}
+
+enum Stage {
+    Sent,
+    Predicted,
+    Downloaded,
+}
+
+type Inventory = HashMap<String, Vec<InventoryFile>>;
+
+struct InventoryFile {
+    sop: String,
+    stage: Stage,
+}
+
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
@@ -42,9 +61,10 @@ async fn main() {
         }
     };
 
+    // Main channel to send commands to the manager thread
     let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
 
-    let sender2 = sender.clone();
+    // let sender2 = sender.clone();
 
     let manager = tokio::spawn(async move {
         while let Some(file) = receiver.recv().await {
@@ -63,6 +83,10 @@ async fn main() {
                 .to_str()
                 .unwrap();
             println!("Sending file: {}", sop);
+            if sop == "1.2.276.0.7230010.3.1.4.808989797.1.1677236046.446300" {
+                // wait for 1 second
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            }
             manager_sender.send(sop.to_string()).await.unwrap();
         });
         send_tasks.push(send_task);
@@ -72,22 +96,23 @@ async fn main() {
         send_task.await.unwrap();
     }
 
-    let parser = tokio::spawn(async move {
-        let files = vec!["file1", "file2", "file3"];
-        for file in files {
-            sender.send(file.to_string()).await.unwrap();
-        }
-    });
+    // let parser = tokio::spawn(async move {
+    //     let files = vec!["file1", "file2", "file3"];
+    //     for file in files {
+    //         sender.send(file.to_string()).await.unwrap();
+    //     }
+    // });
 
-    let parser2 = tokio::spawn(async move {
-        let files = vec!["file4", "file5", "file6"];
-        for file in files {
-            sender2.send(file.to_string()).await.unwrap();
-        }
-    });
+    // let parser2 = tokio::spawn(async move {
+    //     let files = vec!["file4", "file5", "file6"];
+    //     for file in files {
+    //         sender2.send(file.to_string()).await.unwrap();
+    //     }
+    // });
 
-    parser2.await.unwrap();
-    parser.await.unwrap();
+    // parser2.await.unwrap();
+    // parser.await.unwrap();
+    drop(sender);
     manager.await.unwrap();
 }
 
@@ -112,7 +137,6 @@ fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<Vec<FileDicomObject<InM
 }
 
 fn tracing_subscriber_handler(args: &Args) {
-    println!("Loglevel: {:?}", args.log_level);
     let env_filter = match args.log_level {
         LogLevel::Debug => "rework=debug",
         LogLevel::Info => "rework=info",
