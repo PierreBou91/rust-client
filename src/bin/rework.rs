@@ -162,3 +162,34 @@ fn tracing_subscriber_handler(args: &Args) {
             .expect("Error while setting subscriber for tracing.");
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_dicom_list_from_args() {
+        let args = Args {
+            dicoms: vec![
+                PathBuf::from("src/bin/rework.rs"),
+                PathBuf::from("src/bin/rework.rs"),
+            ],
+            log_level: LogLevel::Info,
+            timestamp: false,
+        };
+        let dicom_list = dicom_list_from_args(&args.dicoms);
+        assert!(dicom_list.is_none());
+    }
+
+    #[test]
+    fn test_dicom_list_from_args2() {
+        let args = Args {
+            dicoms: vec![PathBuf::from("CR000001.dcm")],
+            log_level: LogLevel::Info,
+            timestamp: false,
+        };
+        let dicom_list = dicom_list_from_args(&args.dicoms);
+        assert_eq!(1, dicom_list.unwrap().len());
+    }
+}

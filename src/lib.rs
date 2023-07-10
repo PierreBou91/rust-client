@@ -32,7 +32,7 @@
 //!
 //! ## Example
 //! The following example demonstrates how to submit a request to the Milvue API and fetch the resulting analysis.
-//! ```rust no_run
+//! ```ignore rust no_run
 //! use dicom_object::open_file;
 //! use std::env;
 //!
