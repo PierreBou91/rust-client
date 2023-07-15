@@ -29,19 +29,21 @@ enum LogLevel {
 }
 
 enum Event {
-    Sent(String),
-    Predicted(String),
-    Downloaded(String),
+    Sent(HashMap<String, Vec<String>>),
+    // Predicted(String),
+    // Downloaded(String),
 }
 
+#[derive(Debug)]
 enum Stage {
-    Sent,
-    Predicted,
-    Downloaded,
+    Ready,
+    // Sent
+    // Predicted,
+    // Downloaded,
 }
 
-type Inventory = HashMap<String, Vec<InventoryFile>>;
-
+// type Inventory = HashMap<String, Vec<InventoryFile>>;
+#[derive(Debug)]
 struct InventoryFile {
     sop: String,
     stage: Stage,
@@ -53,6 +55,7 @@ async fn main() {
 
     tracing_subscriber_handler(&args);
 
+    // The DICOM files are loaded in memory
     let dicom_list = match dicom_list_from_args(&args.dicoms) {
         Some(dicom_list) => dicom_list,
         None => {
@@ -61,33 +64,58 @@ async fn main() {
         }
     };
 
-    // Main channel to send commands to the manager thread
-    let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
+    // Build the inventory
+    let mut inventory = HashMap::new();
+    for (study_uid, dicom_files) in dicom_list.iter() {
+        for f in dicom_files {
+            inventory
+                .entry(study_uid)
+                .or_insert(Vec::new())
+                .push(InventoryFile {
+                    sop: f
+                        .element_by_name("SOPInstanceUID")
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                    stage: Stage::Ready,
+                });
+        }
+    }
 
-    // let sender2 = sender.clone();
+    // Main channel to send commands to the manager thread
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(128);
 
     let manager = tokio::spawn(async move {
-        while let Some(file) = receiver.recv().await {
-            println!("Received file: {}", file);
+        while let Some(event) = receiver.recv().await {
+            match event {
+                Event::Sent(e) => println!("Sent one study \n{:#?}", e),
+            }
         }
     });
 
     let mut send_tasks = Vec::new();
 
-    for dicom in dicom_list {
+    for (i, study) in dicom_list {
         let manager_sender = sender.clone();
         let send_task = tokio::spawn(async move {
-            let sop = dicom
-                .element_by_name("SOPInstanceUID")
-                .unwrap()
-                .to_str()
+            // TODO: Actually send the files
+            manager_sender
+                .send(Event::Sent(HashMap::from([(
+                    i,
+                    study
+                        .iter()
+                        .map(|f| {
+                            f.element_by_name("SOPInstanceUID")
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_string()
+                        })
+                        .collect::<Vec<String>>(),
+                )])))
+                .await
                 .unwrap();
-            println!("Sending file: {}", sop);
-            if sop == "1.2.276.0.7230010.3.1.4.808989797.1.1677236046.446300" {
-                // wait for 1 second
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
-            manager_sender.send(sop.to_string()).await.unwrap();
         });
         send_tasks.push(send_task);
     }
@@ -96,28 +124,14 @@ async fn main() {
         send_task.await.unwrap();
     }
 
-    // let parser = tokio::spawn(async move {
-    //     let files = vec!["file1", "file2", "file3"];
-    //     for file in files {
-    //         sender.send(file.to_string()).await.unwrap();
-    //     }
-    // });
-
-    // let parser2 = tokio::spawn(async move {
-    //     let files = vec!["file4", "file5", "file6"];
-    //     for file in files {
-    //         sender2.send(file.to_string()).await.unwrap();
-    //     }
-    // });
-
-    // parser2.await.unwrap();
-    // parser.await.unwrap();
     drop(sender);
     manager.await.unwrap();
 }
 
-fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<Vec<FileDicomObject<InMemDicomObject>>> {
-    let mut dicom_list = Vec::new();
+type DicomByStudy = HashMap<String, Vec<FileDicomObject<InMemDicomObject>>>;
+
+fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<DicomByStudy> {
+    let mut dicom_list = HashMap::new();
     for file in dicoms {
         match open_file(file) {
             Ok(dicom_file) => {
@@ -125,7 +139,17 @@ fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<Vec<FileDicomObject<InM
                     "File {} added to the dataset to be analyzed.",
                     file.display()
                 );
-                dicom_list.push(dicom_file)
+                dicom_list
+                    .entry(
+                        dicom_file
+                            .element_by_name("StudyInstanceUID")
+                            .unwrap()
+                            .to_str()
+                            .unwrap()
+                            .to_string(),
+                    )
+                    .or_insert_with(Vec::new)
+                    .push(dicom_file);
             }
             Err(_) => warn!("Skipping file {}, not a valid dicom file", file.display()),
         }

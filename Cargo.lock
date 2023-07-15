@@ -1015,6 +1015,7 @@ dependencies = [
  "bytes",
  "clap",
  "dicom",
+ "dicom-dictionary-std",
  "dicom-object",
  "http",
  "multer",
