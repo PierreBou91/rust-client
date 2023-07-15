@@ -3,6 +3,7 @@ use std::{collections::HashMap, path::PathBuf};
 use clap::{Parser, ValueEnum};
 
 use dicom_object::OpenFileOptions;
+use milvue_rs::{post_stream, wait_for_done_with_url};
 use tokio::sync::mpsc::{self, Sender};
 use tracing::warn;
 
@@ -13,17 +14,23 @@ struct Event {
 
 #[derive(Debug)]
 enum EventKind {
-    Sent(HashMap<String, Vec<String>>),
-    // Predicted(String),
+    Uploaded((String, Vec<(String, PathBuf)>)),
+    Predicted((String, Vec<(String, PathBuf)>)),
     // Downloaded(String),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
 struct Args {
     /// Path to DICOM file(s)
     #[clap(required = true)]
     dicoms: Vec<PathBuf>,
+    /// API key for the Milvue API
+    #[clap(short = 'k', long)]
+    api_key: String,
+    /// API URL for the Milvue API
+    #[clap(short, long)]
+    api_url: String,
     /// Set the log level
     #[arg(value_enum)]
     #[clap(short = 'L', long, default_value = "info")]
@@ -65,23 +72,21 @@ async fn main() {
     let mut tasks = Vec::new();
 
     // process every study in parallel (in worker threads)
-    let inventory_clone = inventory.clone();
 
-    inventory_clone.into_iter().for_each(|study| {
+    inventory.clone().into_iter().for_each(|study| {
+        let args_clone = args.clone();
         let tx = tx.clone();
         tasks.push(tokio::spawn(async move {
-            process_study(study, tx).await;
+            process_study(study, tx, args_clone).await;
         }))
     });
-
-    args.dicoms.len(); // ABSOLUTELY REMOVE THIS IT ONLY HERE TO MUTE A WARNING
-    inventory.len(); // ABSOLUTELY REMOVE THIS IT ONLY HERE TO MUTE A WARNING
 
     // launching a manager thread that will receive the results from the workers
     tasks.push(tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event.kind {
-                EventKind::Sent(_) => todo!(),
+                EventKind::Uploaded(study) => println!("Uploaded: {:?}", study),
+                EventKind::Predicted(study) => println!("Predicted: {:?}", study),
             }
         }
     }));
@@ -93,13 +98,33 @@ async fn main() {
     }
 }
 
-async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event>) {
-    println!("processing study: {:?}", study);
-    let ev = Event {
-        kind: EventKind::Sent(HashMap::new()),
+async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event>, args: Args) {
+    match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
+        Ok(_) => tx
+            .send(Event {
+                kind: EventKind::Uploaded(study.clone()),
+            })
+            .await
+            .unwrap(),
+        Err(e) => {
+            warn!("Error while uploading the study: {}", e);
+        }
     };
-    println!("sending event {:?}", ev);
-    println!("with sender {:?}", tx);
+
+    // Poll for results
+    match wait_for_done_with_url(&args.api_url, &args.api_key, &study.0).await {
+        Ok(_) => tx
+            .send(Event {
+                kind: EventKind::Predicted(study.clone()),
+            })
+            .await
+            .unwrap(),
+        Err(e) => {
+            warn!("Error while polling for results: {}", e);
+        }
+    };
+
+    // Download the results
 }
 
 fn inventory_from_args(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(String, PathBuf)>>> {

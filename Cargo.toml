@@ -11,14 +11,15 @@ clap = { version = "4", features = ["derive"]}
 dicom = "0"
 dicom-dictionary-std = "0.5.0"
 dicom-object = "0"
+futures-util = "0.3.28"
 http = "0"
 multer = { version = "2", features = ["tokio-io"] }
 num-bigint = "0"
-reqwest = { version = "0", features = ["multipart", "json"] }
+reqwest = { version = "0.11.18", features = ["multipart", "json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
-tokio-util = "0"
+tokio-util = { version = "0.6", features = ["io","codec"] }
 tracing = "0"
 tracing-subscriber = { version = "0", features = ["env-filter"]}
 uuid = { version = "1", features = ["v4", "fast-rng"] }

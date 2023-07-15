@@ -1,6 +1,9 @@
 use dicom::object::InMemDicomObject;
 use dicom_object::FileDicomObject;
-use reqwest::{header, multipart, Client};
+use reqwest::{header, multipart, Body, Client};
+use std::path::PathBuf;
+use tokio::fs::File;
+use tokio_util::codec::{BytesCodec, FramedRead};
 use tracing::{debug, error, info};
 
 use crate::{structs::MilvueError, MilvueUrl};
@@ -72,6 +75,58 @@ pub async fn post_with_url(
 
     info!("Sending POST request to {}", milvue_api_url);
     let response = client.post(milvue_api_url).multipart(form?).send().await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => info!("POST request successfully sent."),
+        status => {
+            error!("POST request failed with status code {}", status);
+            return Err(MilvueError::StatusResponseError(response));
+        }
+    }
+
+    Ok(response)
+}
+
+pub async fn post_stream(
+    key: String,
+    url: String,
+    study: (String, Vec<(String, PathBuf)>),
+) -> Result<reqwest::Response, MilvueError> {
+    let milvue_api_url = format!("{}/v3/studies", url);
+
+    let mut headers = header::HeaderMap::new();
+
+    let mut api_key = header::HeaderValue::from_str(&key)?;
+
+    api_key.set_sensitive(true);
+
+    headers.insert("x-goog-meta-owner", api_key);
+
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("multipart/related"),
+    );
+
+    headers.insert(
+        "type",
+        header::HeaderValue::from_static("application/dicom"),
+    );
+
+    let client = Client::builder().default_headers(headers).build()?;
+
+    let mut form = multipart::Form::new();
+
+    for (sop, path) in study.1 {
+        let file = File::open(path).await.unwrap(); // TODO: Create a MilvueError
+        let stream = FramedRead::new(file, BytesCodec::new());
+        let body = Body::wrap_stream(stream);
+        let part = multipart::Part::stream(body)
+            .mime_str("application/dicom")
+            .unwrap();
+        form = form.part(sop, part);
+    }
+
+    let response = client.post(milvue_api_url).multipart(form).send().await?;
 
     match response.status() {
         reqwest::StatusCode::OK => info!("POST request successfully sent."),
