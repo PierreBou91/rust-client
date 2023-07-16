@@ -1,32 +1,47 @@
-use std::{env, fs, path::PathBuf, process, sync::Arc};
+use std::{collections::HashMap, fs, path::PathBuf, process};
 
 use clap::{Parser, ValueEnum};
-use dicom::core::{DataElement, PrimitiveValue, VR};
-use dicom_object::{open_file, FileDicomObject, InMemDicomObject, Tag};
-use milvue_rs::{
-    InferenceCommand, Language, MilvueError, MilvueParams, OutputFormat, OutputSelection,
-    RecapTheme, StaticReportFormat, StructuredReportFormat,
-};
-use num_bigint::BigUint;
-use tokio::sync::Mutex;
-use tracing::{error, info, warn};
-use uuid::Uuid;
 
-#[derive(Parser, Debug)]
+use dicom_object::OpenFileOptions;
+use milvue_rs::{
+    get_with_url, post_stream, wait_for_done_with_url, InferenceCommand, Language, MilvueError,
+    MilvueParams, OutputFormat, OutputSelection, RecapTheme, StaticReportFormat,
+    StructuredReportFormat,
+};
+use tokio::sync::mpsc::{self, Sender};
+use tracing::{error, info, warn};
+use walkdir::WalkDir;
+
+#[derive(Debug)]
+struct Event {
+    kind: EventKind,
+}
+
+#[derive(Debug)]
+enum EventKind {
+    Uploaded((String, Vec<(String, PathBuf)>)),
+    Predicted((String, Vec<(String, PathBuf)>)),
+    Downloaded((String, Vec<(String, PathBuf)>)),
+}
+
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
 struct Args {
-    /// Path to DICOM file(s)
+    /// Input directory
     #[clap(required = true)]
-    dicoms: Vec<PathBuf>,
+    input_dir: PathBuf,
     /// Output directory
     #[clap(short = 'o', long, default_value = ".")]
     output_dir: PathBuf,
-    /// Override the API key from the environment variable
+    /// Recursive search in the input directory
+    #[clap(short = 'r', long, default_value = "false")]
+    recursive: bool,
+    /// API key for the Milvue API
     #[clap(short = 'k', long)]
-    api_key: Option<String>,
-    /// NOT YET IMPLEMENTED USE ENVARS Override the API URL from the environment variable
+    api_key: String,
+    /// API URL for the Milvue API
     #[clap(short, long)]
-    api_url: Option<String>,
+    api_url: String,
     /// Run SmartUrgences inference on the dataset
     #[clap(short = 'u', long)]
     smarturgences: bool,
@@ -51,11 +66,11 @@ struct Args {
     recap_theme: RecapTheme,
     /// Select the format for the static report
     #[arg(value_enum)]
-    #[clap(short = 'r', long, default_value = "rgb")]
+    #[clap(short = 's', long, default_value = "rgb")]
     static_report: StaticReportFormat,
     /// Select the format for the structured report
     #[arg(value_enum)]
-    #[clap(short = 'R', long, default_value = "none")]
+    #[clap(short = 'S', long, default_value = "none")]
     structured_report: StructuredReportFormat,
     /// Set the log level
     #[arg(value_enum)]
@@ -64,9 +79,6 @@ struct Args {
     /// Display timestamps with log messages
     #[clap(short = 'T', long)]
     timestamp: bool,
-    // Options to be added when they are implemented in the library:
-    // Signed URL
-    // Timezone
 }
 
 #[derive(Copy, Clone, ValueEnum, Debug)]
@@ -79,18 +91,12 @@ enum LogLevel {
 }
 
 #[tokio::main]
-pub async fn main() {
+async fn main() {
     let args = Args::parse();
 
     tracing_subscriber_handler(&args);
 
-    let params = match params_from_args(&args) {
-        Ok(params) => params,
-        Err(e) => {
-            error!("Error: {}", e);
-            process::exit(1);
-        }
-    };
+    let dicom_list = dbg!(input_dir_validator(args.clone()));
 
     if !args.output_dir.exists() {
         info!("Creating output directory: {}", args.output_dir.display());
@@ -103,122 +109,158 @@ pub async fn main() {
         }
     }
 
-    let mut dicom_list = match dicom_list_from_args(&args.dicoms) {
-        Some(dicom_list) => dicom_list,
+    // getting the files to process
+    let inventory = match inventory_from_pathbuf(dicom_list) {
+        Some(inventory) => inventory,
         None => {
-            error!("No valid DICOM files found at the specified path(s), exiting.");
-            process::exit(1);
+            warn!("No DICOM file to process.");
+            return;
         }
     };
 
-    let study_instance_uid = match milvue_rs::check_study_uids(&dicom_list) {
-        Ok(uid) => uid,
+    // creating a channel to communicate between the manager and the workers
+    // and a vector to store the tasks
+    let (tx, mut rx) = mpsc::channel::<Event>(32);
+    let mut tasks = Vec::new();
+
+    // process every study in parallel (in worker threads)
+    inventory.clone().into_iter().for_each(|study| {
+        let args_clone = args.clone();
+        let tx = tx.clone();
+        tasks.push(tokio::spawn(async move {
+            process_study(study, tx, args_clone).await;
+        }))
+    });
+
+    // launching a manager thread that will receive the results from the workers
+    tasks.push(tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event.kind {
+                EventKind::Uploaded(study) => println!("Uploaded: {:?}", study),
+                EventKind::Predicted(study) => println!("Predicted: {:?}", study),
+                EventKind::Downloaded(study) => println!("Downloaded: {:?}", study),
+            }
+        }
+    }));
+
+    // the end
+    drop(tx);
+    for task in tasks {
+        task.await.unwrap();
+    }
+}
+
+async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event>, args: Args) {
+    match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
+        Ok(_) => tx
+            .send(Event {
+                kind: EventKind::Uploaded(study.clone()),
+            })
+            .await
+            .unwrap(),
+        Err(e) => {
+            warn!("Error while uploading the study: {}", e);
+        }
+    };
+
+    // Poll for results
+    match wait_for_done_with_url(&args.api_url, &args.api_key, &study.0).await {
+        Ok(_) => tx
+            .send(Event {
+                kind: EventKind::Predicted(study.clone()),
+            })
+            .await
+            .unwrap(),
+        Err(e) => {
+            warn!("Error while polling for results: {}", e);
+        }
+    };
+
+    // Download the results
+    let params = match params_from_args(args.clone()) {
+        Ok(params) => params,
         Err(e) => {
             error!("Error: {}", e);
             process::exit(1);
         }
     };
 
-    let new_study_instance_uid = generate_dicom_uid();
+    let mut tasks = Vec::new();
 
-    update_study_instance_uid(&mut dicom_list, &new_study_instance_uid);
-
-    let key = match args.api_key {
-        Some(key) => key,
-        None => match env::var("MILVUE_API_KEY") {
-            Ok(key) => key,
-            Err(_) => {
-                error!("No API key provided, exiting.");
-                process::exit(1);
+    params.into_iter().for_each(|param| {
+        let args_clone = args.clone();
+        let study_clone = study.clone();
+        let tx = tx.clone();
+        match param.inference_command {
+            InferenceCommand::SmartUrgences => info!(
+                "Downloading SmartUrgences results for study {}",
+                study_clone.0
+            ),
+            InferenceCommand::SmartXpert => {
+                info!("Downloading SmartXpert results for study {}", study_clone.0)
             }
-        },
-    };
-
-    match milvue_rs::post(&key, &mut dicom_list).await {
-        Ok(res) => res,
-        Err(e) => {
-            error!("Error while posting study: {}", e);
-            process::exit(1);
         }
-    };
 
-    match milvue_rs::wait_for_done(&key, &new_study_instance_uid).await {
-        Ok(_) => {}
-        Err(e) => {
-            error!("Error while waiting for study to be processed: {}", e);
-            process::exit(1);
-        }
-    }
+        tasks.push(tokio::spawn(async move {
+            match get_with_url(
+                &args_clone.api_url,
+                &args_clone.api_key,
+                &study_clone.0,
+                &param,
+            )
+            .await
+            {
+                Ok(res) => {
+                    tx.send(Event {
+                        kind: EventKind::Downloaded(study_clone.clone()),
+                    })
+                    .await
+                    .unwrap();
+                    match res {
+                        Some(dicoms) => {
+                            let output_dir = args_clone.output_dir.join(&study_clone.0);
+                            if !output_dir.exists() {
+                                info!("Creating output directory: {}", output_dir.display());
+                                match fs::create_dir_all(&output_dir) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        error!("Error while creating output directory: {}", e);
+                                    }
+                                }
+                            }
 
-    // if args.api_url.is_some() {
-    //     let api_url = Arc::new(args.api_url);
-    // }
-    let key = Arc::new(key);
-    let new_study_instance_uid = Arc::new(new_study_instance_uid);
-    let results = Arc::new(Mutex::new(Vec::new()));
-    let mut handles = Vec::new();
-
-    for config in params {
-        let key_clone = Arc::clone(&key);
-        let uid_clone = Arc::clone(&new_study_instance_uid);
-        let results_clone = Arc::clone(&results);
-
-        let handle = tokio::spawn(async move {
-            match milvue_rs::get(&key_clone, &uid_clone, &config).await {
-                Ok(res) => match res {
-                    Some(mut d) => {
-                        let mut results = results_clone.lock().await;
-                        results.append(&mut d);
+                            for dicom in dicoms {
+                                let sop = dicom
+                                    .element_by_name("SOPInstanceUID")
+                                    .unwrap()
+                                    .to_str()
+                                    .unwrap();
+                                dicom
+                                    .write_to_file(format!("{}/{}.dcm", output_dir.display(), sop))
+                                    .unwrap();
+                            }
+                        }
+                        None => {
+                            warn!(
+                                "No results for study {} for config {:#?}",
+                                study_clone.0, param
+                            );
+                        }
                     }
-                    None => {
-                        warn!("No results for config: {:#?}", config);
-                    }
-                },
-                Err(e) => error!("Error while getting results: {}", e),
+                }
+                Err(e) => {
+                    warn!("Error while downloading the results: {}", e);
+                }
             };
-        });
+        }));
+    });
 
-        handles.push(handle);
-    }
-
-    for handle in handles {
-        handle.await.unwrap(); // Fine to unwrap here, thread should not panic unless fatal error.
-    }
-
-    let mut results = results.lock().await;
-
-    update_study_instance_uid(&mut results, &study_instance_uid);
-
-    for (i, dicom_file) in results.iter().enumerate() {
-        dicom_file
-            .write_to_file(format!("{}/file{}.dcm", args.output_dir.display(), i))
-            .unwrap();
+    for task in tasks {
+        task.await.unwrap();
     }
 }
 
-fn dicom_list_from_args(dicoms: &Vec<PathBuf>) -> Option<Vec<FileDicomObject<InMemDicomObject>>> {
-    let mut dicom_list = Vec::new();
-    for file in dicoms {
-        match open_file(file) {
-            Ok(dicom_file) => {
-                info!(
-                    "File {} added to the dataset to be analyzed.",
-                    file.display()
-                );
-                dicom_list.push(dicom_file)
-            }
-            Err(e) => warn!("Skipping file {}: {}", file.display(), e),
-        }
-    }
-    if dicom_list.is_empty() {
-        return None;
-    }
-    Some(dicom_list)
-}
-
-/// Get the parameters from the command line arguments, and return a list of
-/// MilvueParams to be used for the inference.
-fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
+fn params_from_args(args: Args) -> Result<Vec<MilvueParams>, MilvueError> {
     if !args.smarturgences && !args.smartxpert {
         return Err(MilvueError::NoInferenceCommand);
     }
@@ -244,12 +286,116 @@ fn params_from_args(args: &Args) -> Result<Vec<MilvueParams>, MilvueError> {
             output_selection: Some(args.output_selection.clone()),
             inference_command: InferenceCommand::SmartXpert,
             static_report_format: Some(args.static_report.clone()),
-            structured_report_format: Some(args.structured_report.clone()),
+            structured_report_format: Some(args.structured_report),
             ..Default::default()
         };
         params_list.push(params);
     }
     Ok(params_list)
+}
+
+fn input_dir_validator(args: Args) -> Vec<PathBuf> {
+    if !args.input_dir.exists() {
+        error!(
+            "Input directory does not exist: {}",
+            args.input_dir.display()
+        );
+        process::exit(1);
+    }
+
+    if !args.input_dir.is_dir() {
+        error!(
+            "Input directory is not a directory: {}",
+            args.input_dir.display()
+        );
+        process::exit(1);
+    }
+
+    let walker = match args.recursive {
+        true => WalkDir::new(args.input_dir).into_iter(),
+        false => WalkDir::new(args.input_dir).max_depth(1).into_iter(),
+    };
+
+    walker
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().is_file() {
+                Some(entry.into_path())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn inventory_from_pathbuf(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(String, PathBuf)>>> {
+    let mut inventory = HashMap::new();
+
+    // loop over every path provided by the user
+    dicoms.iter().for_each(|dicom| {
+        // open the file until the PixelData tag
+        if let Some(object) = match OpenFileOptions::new()
+            .read_until(dicom_dictionary_std::tags::PIXEL_DATA)
+            .open_file(dicom)
+        {
+            Ok(object) => Some(object),
+            Err(e) => {
+                warn!("{:?} is not a valid dicom file: {}", dicom, e);
+                None
+            }
+        } {
+            // Actually build the inventory from the DICOM file
+            // TODO: Better error handling to avoid panics in case of bad DICOM file
+            let study_instance_uid = object
+                .element_by_name("StudyInstanceUID")
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "There should be a StudyInstanceUID element in the DICOM file at {}",
+                        dicom.display()
+                    )
+                })
+                .to_str()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "The StudyInstanceUID element in the DICOM file at {} should be a string",
+                        dicom.display()
+                    )
+                })
+                .to_string();
+
+            let sop_instance_uid = object
+                .element_by_name("SOPInstanceUID")
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "There should be a SOPInstanceUID element in the DICOM file at {}",
+                        dicom.display()
+                    )
+                })
+                .to_str()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "The SOPInstanceUID element in the DICOM file at {} should be a string",
+                        dicom.display()
+                    )
+                })
+                .to_string();
+
+            if sop_instance_uid.contains("1.2.826.0.1.3680043.10.457") {
+                warn!("Skipping {}: File is from Milvue", dicom.display());
+            }
+
+            inventory
+                .entry(study_instance_uid)
+                .or_insert_with(Vec::new)
+                .push((sop_instance_uid, dicom.to_owned()));
+        };
+    });
+
+    if inventory.is_empty() {
+        None
+    } else {
+        Some(inventory)
+    }
 }
 
 fn tracing_subscriber_handler(args: &Args) {
@@ -277,28 +423,4 @@ fn tracing_subscriber_handler(args: &Args) {
         tracing::subscriber::set_global_default(sub)
             .expect("Error while setting subscriber for tracing.");
     };
-}
-
-// Valid way of generating UID without a dedicated dicom OID
-// http://www.dclunie.com/medical-image-faq/html/part2.html#UUID
-pub fn generate_dicom_uid() -> String {
-    let uuid = Uuid::new_v4();
-    let bytes = uuid.as_bytes();
-    let bigint = BigUint::from_bytes_le(bytes);
-
-    format!("2.25.{}", bigint)
-}
-
-fn update_study_instance_uid(
-    dicom_list: &mut Vec<FileDicomObject<InMemDicomObject>>,
-    new_study_instance_uid: &str,
-) {
-    for dicom in dicom_list {
-        let new_element = DataElement::new(
-            Tag(0x0020, 0x000D),
-            VR::UI,
-            PrimitiveValue::Str(new_study_instance_uid.to_string()),
-        );
-        dicom.put(new_element);
-    }
 }

@@ -119,7 +119,7 @@ pub struct StatusResponse {
     pub message: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Represents the parameters to configure the Milvue request.
 pub struct MilvueParams {
     /// Whether or not to return a signed URL to handle the DICOM files instead of downloading them directly.
