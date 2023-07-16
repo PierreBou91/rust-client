@@ -1,11 +1,12 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, process};
 
 use clap::{Parser, ValueEnum};
 
 use dicom_object::OpenFileOptions;
 use milvue_rs::{post_stream, wait_for_done_with_url};
 use tokio::sync::mpsc::{self, Sender};
-use tracing::warn;
+use tracing::{error, warn};
+use walkdir::WalkDir;
 
 #[derive(Debug)]
 struct Event {
@@ -22,9 +23,12 @@ enum EventKind {
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about)]
 struct Args {
-    /// Path to DICOM file(s)
+    /// Input directory
     #[clap(required = true)]
-    dicoms: Vec<PathBuf>,
+    input_dir: PathBuf,
+    /// Recursive search in the input directory
+    #[clap(short = 'r', long, default_value = "false")]
+    recursive: bool,
     /// API key for the Milvue API
     #[clap(short = 'k', long)]
     api_key: String,
@@ -55,8 +59,44 @@ async fn main() {
 
     tracing_subscriber_handler(&args);
 
+    // Check that the input directory exists and is a directory
+    if !args.input_dir.exists() {
+        error!(
+            "Input directory does not exist: {}",
+            args.input_dir.display()
+        );
+        process::exit(1);
+    }
+
+    if !args.input_dir.is_dir() {
+        error!(
+            "Input directory is not a directory: {}",
+            args.input_dir.display()
+        );
+        process::exit(1);
+    }
+
+    let walker = match args.recursive {
+        true => WalkDir::new(args.input_dir.clone()).into_iter(),
+        false => WalkDir::new(args.input_dir.clone())
+            .max_depth(1)
+            .into_iter(),
+    };
+    let dicom_list: Vec<PathBuf> = walker
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().is_file() {
+                Some(entry.into_path())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    println!("dicom_list: {:#?}", dicom_list);
+
     // getting the files to process
-    let inventory = match inventory_from_args(args.dicoms.clone()) {
+    let inventory = match inventory_from_pathbuf(dicom_list) {
         Some(inventory) => inventory,
         None => {
             warn!("No DICOM file to process.");
@@ -127,7 +167,7 @@ async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event
     // Download the results
 }
 
-fn inventory_from_args(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(String, PathBuf)>>> {
+fn inventory_from_pathbuf(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(String, PathBuf)>>> {
     let mut inventory = HashMap::new();
 
     // loop over every path provided by the user
