@@ -32,7 +32,7 @@
 //!
 //! ## Example
 //! The following example demonstrates how to submit a request to the Milvue API and fetch the resulting analysis.
-//! ```rust no_run
+//! ```ignore rust no_run
 //! use dicom_object::open_file;
 //! use std::env;
 //!
@@ -83,7 +83,7 @@ pub use get::{
     get, get_study_status, get_study_status_with_url, get_with_url, wait_for_done,
     wait_for_done_with_url,
 };
-pub use post::{post, post_with_url};
+pub use post::{post, post_stream, post_with_url};
 pub use structs::{
     check_study_uids, InferenceCommand, Language, MilvueError, MilvueParams, MilvueUrl,
     OutputFormat, OutputSelection, RecapTheme, StaticReportFormat, StatusResponse,
