@@ -245,7 +245,8 @@ pub async fn wait_for_done_with_url(
     while status_body.status != "done" {
         status_response = get_study_status_with_url(url, key, study_instance_uid).await?;
         status_body = status_response.json().await?;
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        // tokio sleep for 3 sec
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 
     Ok(())

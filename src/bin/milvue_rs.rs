@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf, process};
+use std::{collections::HashMap, fs, path::PathBuf, process, sync::Arc};
 
 use clap::{Parser, ValueEnum};
 
@@ -94,9 +94,9 @@ enum LogLevel {
 async fn main() {
     let args = Args::parse();
 
-    tracing_subscriber_handler(&args);
+    // tracing_subscriber_handler(&args);
 
-    let dicom_list = dbg!(input_dir_validator(args.clone()));
+    let dicom_list = input_dir_validator(args.clone());
 
     if !args.output_dir.exists() {
         info!("Creating output directory: {}", args.output_dir.display());
@@ -117,10 +117,11 @@ async fn main() {
             return;
         }
     };
+    dbg!(inventory.clone());
 
     // creating a channel to communicate between the manager and the workers
     // and a vector to store the tasks
-    let (tx, mut rx) = mpsc::channel::<Event>(32);
+    let (tx, mut rx) = mpsc::channel::<Event>(1024);
     let mut tasks = Vec::new();
 
     // process every study in parallel (in worker threads)
@@ -136,9 +137,9 @@ async fn main() {
     tasks.push(tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event.kind {
-                EventKind::Uploaded(study) => println!("Uploaded: {:?}", study),
-                EventKind::Predicted(study) => println!("Predicted: {:?}", study),
-                EventKind::Downloaded(study) => println!("Downloaded: {:?}", study),
+                EventKind::Uploaded(study) => println!("Uploaded: {:?}", study.0),
+                EventKind::Predicted(study) => println!("Predicted: {:?}", study.0),
+                EventKind::Downloaded(study) => println!("Downloaded: {:?}", study.0),
             }
         }
     }));
@@ -151,6 +152,7 @@ async fn main() {
 }
 
 async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event>, args: Args) {
+    println!("Posting study: {:?}", study.clone().0);
     match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
         Ok(_) => tx
             .send(Event {
@@ -164,6 +166,7 @@ async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event
     };
 
     // Poll for results
+    println!("Polling for results: {:?}", study.clone().0);
     match wait_for_done_with_url(&args.api_url, &args.api_key, &study.0).await {
         Ok(_) => tx
             .send(Event {
@@ -239,6 +242,7 @@ async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event
                                     .write_to_file(format!("{}/{}.dcm", output_dir.display(), sop))
                                     .unwrap();
                             }
+                            println!("Saved: {:?}", study_clone.0);
                         }
                         None => {
                             warn!(
