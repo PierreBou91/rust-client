@@ -8,7 +8,10 @@ use milvue_rs::{
     MilvueParams, OutputFormat, OutputSelection, RecapTheme, StaticReportFormat,
     StructuredReportFormat,
 };
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::{
+    mpsc::{self, Sender},
+    Barrier,
+};
 use tracing::{error, info, warn};
 use walkdir::WalkDir;
 
@@ -119,6 +122,8 @@ async fn main() {
     };
     dbg!(inventory.clone());
 
+    let barrier = Arc::new(tokio::sync::Barrier::new(inventory.len()));
+
     // creating a channel to communicate between the manager and the workers
     // and a vector to store the tasks
     let (tx, mut rx) = mpsc::channel::<Event>(1024);
@@ -128,8 +133,9 @@ async fn main() {
     inventory.clone().into_iter().for_each(|study| {
         let args_clone = args.clone();
         let tx = tx.clone();
+        let barrier = barrier.clone();
         tasks.push(tokio::spawn(async move {
-            process_study(study, tx, args_clone).await;
+            process_study(study, tx, args_clone, barrier).await;
         }))
     });
 
@@ -151,7 +157,12 @@ async fn main() {
     }
 }
 
-async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event>, args: Args) {
+async fn process_study(
+    study: (String, Vec<(String, PathBuf)>),
+    tx: Sender<Event>,
+    args: Args,
+    barrier: Arc<Barrier>,
+) {
     println!("Posting study: {:?}", study.clone().0);
     match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
         Ok(_) => tx
@@ -164,6 +175,9 @@ async fn process_study(study: (String, Vec<(String, PathBuf)>), tx: Sender<Event
             warn!("Error while uploading the study: {}", e);
         }
     };
+
+    // Wait for all studies to be uploaded
+    barrier.wait().await;
 
     // Poll for results
     println!("Polling for results: {:?}", study.clone().0);
