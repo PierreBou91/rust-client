@@ -126,7 +126,7 @@ async fn main() {
 
     // creating a channel to communicate between the manager and the workers
     // and a vector to store the tasks
-    let (tx, mut rx) = mpsc::channel::<Event>(1024);
+    let (tx, mut rx) = mpsc::channel::<Event>(256);
     let mut tasks = Vec::new();
 
     // process every study in parallel (in worker threads)
@@ -163,7 +163,7 @@ async fn process_study(
     args: Args,
     barrier: Arc<Barrier>,
 ) {
-    println!("Posting study: {:?}", study.clone().0);
+    // println!("Posting study: {:?}", study.clone().0);
     match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
         Ok(_) => tx
             .send(Event {

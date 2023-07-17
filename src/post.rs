@@ -126,7 +126,12 @@ pub async fn post_stream(
         form = form.part(sop, part);
     }
 
+    println!("Posting study {} with post stream", study.0);
+    let start = std::time::Instant::now();
+
     let response = client.post(milvue_api_url).multipart(form).send().await?;
+
+    println!("Time to post study: {:?}", start.elapsed());
 
     match response.status() {
         reqwest::StatusCode::OK => info!("POST request successfully sent."),
