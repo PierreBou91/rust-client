@@ -256,7 +256,7 @@ async fn process_study(
                                             let end = s.find('}').expect("Error while parsing directory, there is a missing \'}\' in the path provided");
                                             new_component.push_str(&s[..start]);
                                             new_component.push_str(match dicom.element_by_name(&s[start+1..end]) {
-                                                Ok(element) => element.string().unwrap().trim_end_matches(char::from(0)),
+                                                Ok(element) => element.string().unwrap().trim_end_matches(&[char::from(0),' ']),
                                                 Err(_) => {
                                                     eprintln!("Could not find element {} in DICOM file, using default value \"ElementNameNotFound\"", &s[start+1..end]);
                                                     "ElementNameNotFound"
@@ -286,12 +286,14 @@ async fn process_study(
                                     }
                                 }
 
-                                let sop = dicom
+                                let mut sop = dicom
                                     .element_by_name("SOPInstanceUID")
                                     .unwrap()
                                     .to_str()
-                                    .unwrap();
-                                new_path.push(sop.to_string());
+                                    .unwrap()
+                                    .to_string();
+                                sop.push_str(".dcm");
+                                new_path.push(sop);
                                 dicom
                                     .write_to_file(new_path)
                                     .unwrap();
