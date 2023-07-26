@@ -291,8 +291,9 @@ async fn process_study(
                                     .unwrap()
                                     .to_str()
                                     .unwrap();
+                                new_path.push(sop.to_string());
                                 dicom
-                                    .write_to_file(format!("{}/{}.dcm", new_path.display(), sop))
+                                    .write_to_file(new_path)
                                     .unwrap();
                             }
                             println!("Saved: {:?}", study_clone.0);
