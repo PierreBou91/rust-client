@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf, process, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, process, sync::Arc};
 
 use clap::{Parser, ValueEnum};
 
@@ -101,16 +101,16 @@ async fn main() {
 
     let dicom_list = input_dir_validator(args.clone());
 
-    if !args.output_dir.exists() {
-        info!("Creating output directory: {}", args.output_dir.display());
-        match fs::create_dir_all(&args.output_dir) {
-            Ok(_) => {}
-            Err(e) => {
-                error!("Error while creating output directory: {}", e);
-                process::exit(1);
-            }
-        }
-    }
+    // if !args.output_dir.exists() {
+    //     info!("Creating output directory: {}", args.output_dir.display());
+    //     match fs::create_dir_all(&args.output_dir) {
+    //         Ok(_) => {}
+    //         Err(e) => {
+    //             error!("Error while creating output directory: {}", e);
+    //             process::exit(1);
+    //         }
+    //     }
+    // }
 
     // getting the files to process
     let inventory = match inventory_from_pathbuf(dicom_list) {
@@ -235,25 +235,64 @@ async fn process_study(
                     .unwrap();
                     match res {
                         Some(dicoms) => {
-                            let output_dir = args_clone.output_dir.join(&study_clone.0);
-                            if !output_dir.exists() {
-                                info!("Creating output directory: {}", output_dir.display());
-                                match fs::create_dir_all(&output_dir) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        error!("Error while creating output directory: {}", e);
-                                    }
-                                }
-                            }
+                            let output_dir = args_clone.output_dir;
+                            // if !output_dir.exists() {
+                            //     info!("Creating output directory: {}", output_dir.display());
+                            //     match fs::create_dir_all(&output_dir) {
+                            //         Ok(_) => {}
+                            //         Err(e) => {
+                            //             error!("Error while creating output directory: {}", e);
+                            //         }
+                            //     }
+                            // }
 
                             for dicom in dicoms {
+                                let output_dir_components = output_dir.components();
+                                let mut new_path = PathBuf::new();
+                                for comp in output_dir_components {
+                                    if let Some(mut s) = comp.as_os_str().to_str() {
+                                        let mut new_component = String::new();
+                                        while let Some(start) = s.find('{') {
+                                            let end = s.find('}').expect("Error while parsing directory, there is a missing \'}\' in the path provided");
+                                            new_component.push_str(&s[..start]);
+                                            new_component.push_str(match dicom.element_by_name(&s[start+1..end]) {
+                                                Ok(element) => element.string().unwrap().trim_end_matches(char::from(0)),
+                                                Err(_) => {
+                                                    eprintln!("Could not find element {} in DICOM file, using default value \"ElementNameNotFound\"", &s[start+1..end]);
+                                                    "ElementNameNotFound"
+                                                },
+                                            });
+                                            s = &s[end+1..];
+                                            if s.find('{').is_none() {
+                                                new_component.push_str(s);
+                                            }
+                                        }
+                                        if new_component.is_empty() {
+                                            new_path.push(s);
+                                        } else {
+                                            new_path.push(new_component);
+                                        }
+                                    }
+                                }
+
+                                if !new_path.exists() {
+                                    info!("Creating output directory: {}", new_path.display());
+                                    match std::fs::create_dir_all(&new_path) {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            eprintln!("Error while creating output directory: {}", e);
+                                            error!("Error while creating output directory: {}", e);
+                                        }
+                                    }
+                                }
+
                                 let sop = dicom
                                     .element_by_name("SOPInstanceUID")
                                     .unwrap()
                                     .to_str()
                                     .unwrap();
                                 dicom
-                                    .write_to_file(format!("{}/{}.dcm", output_dir.display(), sop))
+                                    .write_to_file(format!("{}/{}.dcm", new_path.display(), sop))
                                     .unwrap();
                             }
                             println!("Saved: {:?}", study_clone.0);
