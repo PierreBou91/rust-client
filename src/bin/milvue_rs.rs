@@ -235,7 +235,7 @@ async fn process_study(
                     .unwrap();
                     match res {
                         Some(dicoms) => {
-                            let output_dir = args_clone.output_dir.join(&study_clone.0);
+                            let output_dir = args_clone.output_dir;
                             // if !output_dir.exists() {
                             //     info!("Creating output directory: {}", output_dir.display());
                             //     match fs::create_dir_all(&output_dir) {
@@ -247,7 +247,6 @@ async fn process_study(
                             // }
 
                             for dicom in dicoms {
-
                                 let output_dir_components = output_dir.components();
                                 let mut new_path = PathBuf::new();
                                 for comp in output_dir_components {
@@ -257,7 +256,7 @@ async fn process_study(
                                             let end = s.find('}').expect("Error while parsing directory, there is a missing \'}\' in the path provided");
                                             new_component.push_str(&s[..start]);
                                             new_component.push_str(match dicom.element_by_name(&s[start+1..end]) {
-                                                Ok(element) => element.string().unwrap(),
+                                                Ok(element) => element.string().unwrap().trim_end_matches(char::from(0)),
                                                 Err(_) => {
                                                     eprintln!("Could not find element {} in DICOM file, using default value \"ElementNameNotFound\"", &s[start+1..end]);
                                                     "ElementNameNotFound"
@@ -281,6 +280,7 @@ async fn process_study(
                                     match std::fs::create_dir_all(&new_path) {
                                         Ok(_) => {}
                                         Err(e) => {
+                                            eprintln!("Error while creating output directory: {}", e);
                                             error!("Error while creating output directory: {}", e);
                                         }
                                     }
