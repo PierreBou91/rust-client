@@ -214,6 +214,8 @@ pub enum OutputFormat {
     Highbit,
     /// Gsps is a mask that displays on top of the original image.
     Gsps,
+    /// SC
+    SecondaryCapture,
 }
 
 impl Display for OutputFormat {
@@ -222,6 +224,7 @@ impl Display for OutputFormat {
             OutputFormat::Overlay => write!(f, "overlay"),
             OutputFormat::Highbit => write!(f, "highbit"),
             OutputFormat::Gsps => write!(f, "gsps"),
+            OutputFormat::SecondaryCapture => write!(f, "secondary_capture"),
         }
     }
 }
