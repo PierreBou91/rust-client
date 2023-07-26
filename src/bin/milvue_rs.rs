@@ -97,7 +97,7 @@ enum LogLevel {
 async fn main() {
     let args = Args::parse();
 
-    // tracing_subscriber_handler(&args);
+    tracing_subscriber_handler(&args);
 
     let dicom_list = input_dir_validator(args.clone());
 
@@ -456,29 +456,29 @@ fn inventory_from_pathbuf(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(S
     }
 }
 
-// fn tracing_subscriber_handler(args: &Args) {
-//     let env_filter = match args.log_level {
-//         LogLevel::Debug => "milvue_rs=debug",
-//         LogLevel::Info => "milvue_rs=info",
-//         LogLevel::Warn => "milvue_rs=warn",
-//         LogLevel::Error => "milvue_rs=error",
-//         LogLevel::Quiet => "milvue_rs=off",
-//     };
+fn tracing_subscriber_handler(args: &Args) {
+    let env_filter = match args.log_level {
+        LogLevel::Debug => "milvue_rs=debug",
+        LogLevel::Info => "milvue_rs=info",
+        LogLevel::Warn => "milvue_rs=warn",
+        LogLevel::Error => "milvue_rs=error",
+        LogLevel::Quiet => "milvue_rs=off",
+    };
 
-//     // "if" because the subscriber doesn't yield the same type with or without time wich prevents
-//     // using a match statement.
-//     if args.timestamp {
-//         let sub = tracing_subscriber::fmt::Subscriber::builder()
-//             .with_env_filter(env_filter)
-//             .finish();
-//         tracing::subscriber::set_global_default(sub)
-//             .expect("Error while setting subscriber for tracing.");
-//     } else {
-//         let sub = tracing_subscriber::fmt::Subscriber::builder()
-//             .with_env_filter(env_filter)
-//             .without_time()
-//             .finish();
-//         tracing::subscriber::set_global_default(sub)
-//             .expect("Error while setting subscriber for tracing.");
-//     };
-// }
+    // "if" because the subscriber doesn't yield the same type with or without time wich prevents
+    // using a match statement.
+    if args.timestamp {
+        let sub = tracing_subscriber::fmt::Subscriber::builder()
+            .with_env_filter(env_filter)
+            .finish();
+        tracing::subscriber::set_global_default(sub)
+            .expect("Error while setting subscriber for tracing.");
+    } else {
+        let sub = tracing_subscriber::fmt::Subscriber::builder()
+            .with_env_filter(env_filter)
+            .without_time()
+            .finish();
+        tracing::subscriber::set_global_default(sub)
+            .expect("Error while setting subscriber for tracing.");
+    };
+}
