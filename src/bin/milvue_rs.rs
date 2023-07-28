@@ -12,7 +12,8 @@ use tokio::sync::{
     mpsc::{self, Sender},
     Barrier,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
+use tracing_subscriber::EnvFilter;
 use walkdir::WalkDir;
 
 #[derive(Debug)]
@@ -97,22 +98,14 @@ enum LogLevel {
 async fn main() {
     let args = Args::parse();
 
-    tracing_subscriber_handler(&args);
+    // tracing_subscriber_handler(&args);
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+    debug!("Hello");
 
     let dicom_list = input_dir_validator(args.clone());
 
-    // if !args.output_dir.exists() {
-    //     info!("Creating output directory: {}", args.output_dir.display());
-    //     match fs::create_dir_all(&args.output_dir) {
-    //         Ok(_) => {}
-    //         Err(e) => {
-    //             error!("Error while creating output directory: {}", e);
-    //             process::exit(1);
-    //         }
-    //     }
-    // }
-
-    // getting the files to process
     let inventory = match inventory_from_pathbuf(dicom_list) {
         Some(inventory) => inventory,
         None => {
@@ -236,15 +229,6 @@ async fn process_study(
                     match res {
                         Some(dicoms) => {
                             let output_dir = args_clone.output_dir;
-                            // if !output_dir.exists() {
-                            //     info!("Creating output directory: {}", output_dir.display());
-                            //     match fs::create_dir_all(&output_dir) {
-                            //         Ok(_) => {}
-                            //         Err(e) => {
-                            //             error!("Error while creating output directory: {}", e);
-                            //         }
-                            //     }
-                            // }
 
                             for dicom in dicoms {
                                 let output_dir_components = output_dir.components();
@@ -458,7 +442,7 @@ fn inventory_from_pathbuf(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(S
     }
 }
 
-fn tracing_subscriber_handler(args: &Args) {
+fn _tracing_subscriber_handler(args: &Args) {
     let env_filter = match args.log_level {
         LogLevel::Debug => "milvue_rs=debug",
         LogLevel::Info => "milvue_rs=info",

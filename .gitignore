@@ -2,3 +2,6 @@
 .DS_Store
 
 *.dcm
+
+test_data*/
+output

@@ -238,13 +238,15 @@ pub async fn wait_for_done_with_url(
     study_instance_uid: &str,
 ) -> Result<(), MilvueError> {
     info!("Waiting for study {} to be done", study_instance_uid);
-    let mut status_response = get_study_status_with_url(url, key, study_instance_uid).await?;
 
-    let mut status_body: StatusResponse = status_response.json().await?;
+    loop {
+        let status_response = get_study_status_with_url(url, key, study_instance_uid).await?;
+        let status_body: StatusResponse = status_response.json().await?;
 
-    while status_body.status != "done" {
-        status_response = get_study_status_with_url(url, key, study_instance_uid).await?;
-        status_body = status_response.json().await?;
+        if status_body.status == "done" {
+            break;
+        }
+
         // tokio sleep for 3 sec
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
