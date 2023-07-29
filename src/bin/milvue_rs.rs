@@ -12,7 +12,7 @@ use tokio::sync::{
     mpsc::{self, Sender},
     Barrier,
 };
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 use walkdir::WalkDir;
 
@@ -126,7 +126,7 @@ async fn main() {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let dicom_list = input_dir_validator(args.clone());
+    let dicom_list = input_dir_validator(args);
 
     let inventory = match inventory_from_pathbuf(dicom_list) {
         Some(inventory) => inventory,
@@ -135,16 +135,17 @@ async fn main() {
             return;
         }
     };
-    dbg!(inventory.clone());
+    dbg!(&inventory);
 
+    // barrier to synchronize the worker on upload: under good connexion conditions, the longest
+    // part of the process is the inference, so ensuring that all the studies are uploaded before
+    // taking threads to poll for results is a good idea.
     let barrier = Arc::new(tokio::sync::Barrier::new(inventory.len()));
 
-    // creating a channel to communicate between the manager and the workers
-    // and a vector to store the tasks
     let (tx, mut rx) = mpsc::channel::<Event>(256);
     let mut tasks = Vec::new();
 
-    // process every study in parallel (in worker threads)
+    // process every study in parallel
     inventory.clone().into_iter().for_each(|study| {
         let args_clone = args.clone();
         let tx = tx.clone();
@@ -154,7 +155,7 @@ async fn main() {
         }))
     });
 
-    // launching a manager thread that will receive the results from the workers
+    // thread to receive the progress from the workers
     tasks.push(tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
             match event.kind {
@@ -165,7 +166,6 @@ async fn main() {
         }
     }));
 
-    // the end
     drop(tx);
     for task in tasks {
         task.await.unwrap();
@@ -178,8 +178,8 @@ async fn process_study(
     args: OneshotArgs,
     barrier: Arc<Barrier>,
 ) {
-    // println!("Posting study: {:?}", study.clone().0);
-    match post_stream(args.api_key.clone(), args.api_url.clone(), study.clone()).await {
+    // Upload the study
+    match post_stream(&args.api_key, &args.api_url, &study).await {
         Ok(_) => tx
             .send(Event {
                 kind: EventKind::Uploaded(study.clone()),
@@ -360,7 +360,7 @@ fn params_from_args(args: OneshotArgs) -> Result<Vec<MilvueParams>, MilvueError>
     Ok(params_list)
 }
 
-fn input_dir_validator(args: OneshotArgs) -> Vec<PathBuf> {
+fn input_dir_validator(args: &OneshotArgs) -> Vec<PathBuf> {
     if !args.input_dir.exists() {
         error!(
             "Input directory does not exist: {}",
@@ -378,8 +378,8 @@ fn input_dir_validator(args: OneshotArgs) -> Vec<PathBuf> {
     }
 
     let walker = match args.recursive {
-        true => WalkDir::new(args.input_dir).into_iter(),
-        false => WalkDir::new(args.input_dir).max_depth(1).into_iter(),
+        true => WalkDir::new(&args.input_dir).into_iter(),
+        false => WalkDir::new(&args.input_dir).max_depth(1).into_iter(),
     };
 
     walker

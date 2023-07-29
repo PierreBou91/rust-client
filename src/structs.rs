@@ -72,6 +72,12 @@ pub enum MilvueError {
     /// No inference command provided.
     #[error("No inference command provided.")]
     NoInferenceCommand,
+
+    /// Error occured when opening a file with tokio::fs::File.
+    ///
+    /// Typically triggered when the file does not exist or the user does not have permission to open the file.
+    #[error("Error opening file: {0}")]
+    FileOpenError(#[from] std::io::Error),
 }
 
 /// Enum representing possible Milvue URLs.
