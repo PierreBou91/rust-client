@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, process, sync::Arc};
 
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
 
 use dicom_object::OpenFileOptions;
 use milvue_rs::{
@@ -28,9 +28,23 @@ enum EventKind {
     Downloaded((String, Vec<(String, PathBuf)>)),
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser)]
 #[command(author, version, about)]
-struct Args {
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Parser, Debug, Clone)]
+enum Commands {
+    /// Run the inference on a directory of DICOM files
+    Oneshot(OneshotArgs),
+    Pacsor(PacsorArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+struct OneshotArgs {
     /// Input directory
     #[clap(required = true)]
     input_dir: PathBuf,
@@ -85,6 +99,9 @@ struct Args {
     timestamp: bool,
 }
 
+#[derive(Parser, Debug, Clone)]
+struct PacsorArgs {}
+
 #[derive(Copy, Clone, ValueEnum, Debug)]
 enum LogLevel {
     Debug,
@@ -96,13 +113,18 @@ enum LogLevel {
 
 #[tokio::main]
 async fn main() {
-    let args = Args::parse();
-
+    let cli = Cli::parse();
+    let args = match &cli.command {
+        Commands::Oneshot(os_args) => os_args,
+        Commands::Pacsor(_p_args) => {
+            error!("Pacsor is not implemented yet.");
+            process::exit(1);
+        }
+    };
     // tracing_subscriber_handler(&args);
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env())
         .init();
-    debug!("Hello");
 
     let dicom_list = input_dir_validator(args.clone());
 
@@ -153,7 +175,7 @@ async fn main() {
 async fn process_study(
     study: (String, Vec<(String, PathBuf)>),
     tx: Sender<Event>,
-    args: Args,
+    args: OneshotArgs,
     barrier: Arc<Barrier>,
 ) {
     // println!("Posting study: {:?}", study.clone().0);
@@ -304,7 +326,7 @@ async fn process_study(
     }
 }
 
-fn params_from_args(args: Args) -> Result<Vec<MilvueParams>, MilvueError> {
+fn params_from_args(args: OneshotArgs) -> Result<Vec<MilvueParams>, MilvueError> {
     if !args.smarturgences && !args.smartxpert {
         return Err(MilvueError::NoInferenceCommand);
     }
@@ -338,7 +360,7 @@ fn params_from_args(args: Args) -> Result<Vec<MilvueParams>, MilvueError> {
     Ok(params_list)
 }
 
-fn input_dir_validator(args: Args) -> Vec<PathBuf> {
+fn input_dir_validator(args: OneshotArgs) -> Vec<PathBuf> {
     if !args.input_dir.exists() {
         error!(
             "Input directory does not exist: {}",
@@ -442,7 +464,7 @@ fn inventory_from_pathbuf(dicoms: Vec<PathBuf>) -> Option<HashMap<String, Vec<(S
     }
 }
 
-fn _tracing_subscriber_handler(args: &Args) {
+fn _tracing_subscriber_handler(args: &OneshotArgs) {
     let env_filter = match args.log_level {
         LogLevel::Debug => "milvue_rs=debug",
         LogLevel::Info => "milvue_rs=info",
